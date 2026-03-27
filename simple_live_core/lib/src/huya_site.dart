@@ -244,7 +244,7 @@ class HuyaSite implements LiveSite {
     }
 
     var ctype = mapAnti["ctype"]?.first ?? "huya_pc_exe";
-    var platformId = int.tryParse(mapAnti["t"]?.first ?? "0");
+    var platformId = int.tryParse(mapAnti["t"]?.first ?? "0") ?? 0;
 
     bool isWap = platformId == 103;
     var clacStartTime = DateTime.now().millisecondsSinceEpoch;
@@ -271,8 +271,13 @@ class HuyaSite implements LiveSite {
     if (wsTimeInt == null) {
       return antiCode;
     }
-    final fm = Uri.decodeComponent(fmValue);
-    final secretPrefix = utf8.decode(base64.decode(fm)).split('_').first;
+    String secretPrefix;
+    try {
+      final fm = Uri.decodeComponent(fmValue);
+      secretPrefix = utf8.decode(base64.decode(fm)).split('_').first;
+    } on FormatException {
+      return antiCode;
+    }
     final secretStr =
         '${secretPrefix}_${calcUid}_${stream}_${secretHash}_$wsTime';
 
