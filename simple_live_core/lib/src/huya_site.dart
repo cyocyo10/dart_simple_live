@@ -459,7 +459,10 @@ class HuyaSite implements LiveSite {
             multiLine: false)
         .firstMatch(resultText)
         ?.group(0);
-    var jsonText = text!
+    if (text == null || text.isEmpty) {
+      throw Exception("无法解析虎牙直播间数据");
+    }
+    var jsonText = text
         .replaceAll(RegExp(r"window\.HNF_GLOBAL_INIT.=."), '')
         .replaceAll("</script>", "")
         .replaceAllMapped(RegExp(r'function.*?\(.*?\).\{[\s\S]*?\}'), (match) {

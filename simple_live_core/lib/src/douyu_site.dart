@@ -34,8 +34,12 @@ class DouyuSite implements LiveSite {
     var result = await HttpClient.instance.getJson(
       "https://m.douyu.com/api/cate/list",
     );
-    var subCateList = result["data"]["cate2Info"] as List;
-    for (var item in result["data"]["cate1Info"]) {
+    var cate2Data = result["data"]?["cate2Info"];
+    if (cate2Data is! List) return categories;
+    var subCateList = cate2Data;
+    var cate1Data = result["data"]?["cate1Info"];
+    if (cate1Data is! List) return categories;
+    for (var item in cate1Data) {
       var cate1Id = item["cate1Id"];
       var cate1Name = item["cate1Name"];
       List<LiveSubCategory> subCategories = [];
@@ -302,9 +306,14 @@ class DouyuSite implements LiveSite {
     );
     Map roomInfo;
     if (result is String) {
-      roomInfo = json.decode(result)["room"];
+      var decoded = json.decode(result);
+      var room = decoded["room"];
+      if (room is! Map) throw Exception("房间数据未找到");
+      roomInfo = room;
     } else {
-      roomInfo = result["room"];
+      var room = result["room"];
+      if (room is! Map) throw Exception("房间数据未找到");
+      roomInfo = room;
     }
     return roomInfo;
   }

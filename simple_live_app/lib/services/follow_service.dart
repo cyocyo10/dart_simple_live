@@ -190,6 +190,7 @@ class FollowService extends GetxService {
   }
 
   void startUpdateStatus() async {
+    if (updating.value) return;
     updatedCount = 0;
     updating.value = true;
 
@@ -440,6 +441,7 @@ class FollowService extends GetxService {
   void onClose() {
     updateTimer?.cancel();
     subscription?.cancel();
+    _updatedListController.close();
     super.onClose();
   }
 }

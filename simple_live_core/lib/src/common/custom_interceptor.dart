@@ -23,8 +23,12 @@ Request Headers：${options.headers}''',
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    var time =
-        DateTime.now().millisecondsSinceEpoch - err.requestOptions.extra["ts"];
+    var ts = err.requestOptions.extra["ts"];
+    if (ts == null) {
+      super.onError(err, handler);
+      return;
+    }
+    var time = DateTime.now().millisecondsSinceEpoch - (ts as int);
     if (CoreLog.requestLogType == RequestLogType.all) {
       CoreLog.e('''[HTTP Error] [${err.type}] [Time:${time}ms]
 ${err.message}
@@ -49,8 +53,12 @@ Response Data：${err.response?.data}''', err.stackTrace);
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    var time = DateTime.now().millisecondsSinceEpoch -
-        response.requestOptions.extra["ts"];
+    var ts = response.requestOptions.extra["ts"];
+    if (ts == null) {
+      super.onResponse(response, handler);
+      return;
+    }
+    var time = DateTime.now().millisecondsSinceEpoch - (ts as int);
     if (CoreLog.requestLogType == RequestLogType.all) {
       CoreLog.i(
         '''[HTTP Response] [time:${time}ms]

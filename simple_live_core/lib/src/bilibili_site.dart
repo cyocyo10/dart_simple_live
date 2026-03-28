@@ -68,9 +68,13 @@ class BiliBiliSite implements LiveSite {
       },
       header: await getHeader(),
     );
-    for (var item in result["data"]) {
+    var data = result["data"];
+    if (data is! List) return categories;
+    for (var item in data) {
       List<LiveSubCategory> subs = [];
-      for (var subItem in item["list"]) {
+      var subList = item["list"];
+      if (subList is! List) continue;
+      for (var subItem in subList) {
         var subCategory = LiveSubCategory(
           id: subItem["id"].toString(),
           name: asT<String?>(subItem["name"]) ?? "",
@@ -106,9 +110,11 @@ class BiliBiliSite implements LiveSite {
       header: await getHeader(),
     );
 
-    var hasMore = result["data"]["has_more"] == 1;
+    var hasMore = result["data"]?["has_more"] == 1;
     var items = <LiveRoomItem>[];
-    for (var item in result["data"]["list"]) {
+    var categoryList = result["data"]?["list"];
+    if (categoryList is! List) return LiveCategoryResult(hasMore: false, items: items);
+    for (var item in categoryList) {
       var roomItem = LiveRoomItem(
         roomId: item["roomid"].toString(),
         title: item["title"].toString(),
@@ -137,13 +143,24 @@ class BiliBiliSite implements LiveSite {
       header: await getHeader(),
     );
     var qualitiesMap = <int, String>{};
-    for (var item in result["data"]["playurl_info"]["playurl"]["g_qn_desc"]) {
-      qualitiesMap[int.tryParse(item["qn"].toString()) ?? 0] =
-          item["desc"].toString();
+    var playurl = result["data"]?["playurl_info"]?["playurl"];
+    var gQnDesc = playurl?["g_qn_desc"];
+    if (gQnDesc is List) {
+      for (var item in gQnDesc) {
+        qualitiesMap[int.tryParse(item["qn"].toString()) ?? 0] =
+            item["desc"].toString();
+      }
     }
 
-    for (var item in result["data"]["playurl_info"]["playurl"]["stream"][0]
-        ["format"][0]["codec"][0]["accept_qn"]) {
+    var streams = playurl?["stream"];
+    if (streams is! List || streams.isEmpty) return qualities;
+    var formats = streams[0]["format"];
+    if (formats is! List || formats.isEmpty) return qualities;
+    var codecs = formats[0]["codec"];
+    if (codecs is! List || codecs.isEmpty) return qualities;
+    var acceptQn = codecs[0]["accept_qn"];
+    if (acceptQn is! List) return qualities;
+    for (var item in acceptQn) {
       var qualityItem = LivePlayQuality(
         quality: qualitiesMap[item] ?? "未知清晰度",
         data: item,
@@ -170,13 +187,17 @@ class BiliBiliSite implements LiveSite {
       },
       header: await getHeader(),
     );
-    var streamList = result["data"]["playurl_info"]["playurl"]["stream"];
+    var streamList = result["data"]?["playurl_info"]?["playurl"]?["stream"];
+    if (streamList is! List) streamList = [];
     for (var streamItem in streamList) {
       var formatList = streamItem["format"];
+      if (formatList is! List) continue;
       for (var formatItem in formatList) {
         var codecList = formatItem["codec"];
+        if (codecList is! List) continue;
         for (var codecItem in codecList) {
           var urlList = codecItem["url_info"];
+          if (urlList is! List) continue;
           var baseUrl = codecItem["base_url"].toString();
           for (var urlItem in urlList) {
             urls.add(
@@ -218,9 +239,11 @@ class BiliBiliSite implements LiveSite {
       header: await getHeader(),
     );
 
-    var hasMore = (result["data"]["list"] as List).isNotEmpty;
+    var recommendList = result["data"]?["list"];
+    var hasMore = (recommendList is List) && recommendList.isNotEmpty;
     var items = <LiveRoomItem>[];
-    for (var item in result["data"]["list"]) {
+    if (recommendList is! List) return LiveCategoryResult(hasMore: false, items: items);
+    for (var item in recommendList) {
       var roomItem = LiveRoomItem(
         roomId: item["roomid"].toString(),
         title: item["title"].toString(),
@@ -247,9 +270,10 @@ class BiliBiliSite implements LiveSite {
       queryParameters: queryParams,
       header: await getHeader(),
     );
-    List<String> serverHosts = (roomDanmakuResult["data"]["host_list"] as List)
-        .map<String>((e) => e["host"].toString())
-        .toList();
+    var hostList = roomDanmakuResult["data"]?["host_list"];
+    List<String> serverHosts = (hostList is List)
+        ? hostList.map<String>((e) => e["host"].toString()).toList()
+        : <String>[];
 
     //var buvid = await getBuvid();
     // 从 roomInfo 中提取 live_start_time
