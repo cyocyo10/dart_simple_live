@@ -302,6 +302,8 @@ class BiliBiliSite implements LiveSite {
       }
     }
 
+    var liveStatus = asT<int?>(roomInfo["room_info"]["live_status"]) ?? 0;
+
     return LiveRoomDetail(
       roomId: realRoomId,
       title: roomInfo["room_info"]["title"].toString(),
@@ -309,7 +311,9 @@ class BiliBiliSite implements LiveSite {
       userName: roomInfo["anchor_info"]["base_info"]["uname"].toString(),
       userAvatar: "${roomInfo["anchor_info"]["base_info"]["face"]}@100w.jpg",
       online: asT<int?>(roomInfo["room_info"]["online"]) ?? 0,
-      status: (asT<int?>(roomInfo["room_info"]["live_status"]) ?? 0) == 1,
+      // liveStatus >= 1: 直播(1)和回放(2)都有可播放内容
+      status: liveStatus >= 1,
+      isRecord: liveStatus == 2,
       url: "https://live.bilibili.com/$roomId",
       introduction: roomInfo["room_info"]["description"].toString(),
       notice: "",
@@ -419,6 +423,24 @@ class BiliBiliSite implements LiveSite {
       header: await getHeader(),
     );
     return (asT<int?>(result["data"]["live_status"]) ?? 0) == 1;
+  }
+
+  @override
+  Future<int> getLiveStatusDetail({required String roomId}) async {
+    var result = await HttpClient.instance.getJson(
+      "https://api.live.bilibili.com/room/v1/Room/get_info",
+      queryParameters: {"room_id": roomId},
+      header: await getHeader(),
+    );
+    var liveStatus = asT<int?>(result["data"]["live_status"]) ?? 0;
+    switch (liveStatus) {
+      case 1:
+        return 2; // 直播中
+      case 2:
+        return 3; // 回放中
+      default:
+        return 1; // 未开播
+    }
   }
 
   @override

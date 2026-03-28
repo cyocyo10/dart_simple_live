@@ -182,10 +182,10 @@ class FollowUserPage extends GetView<FollowUserController> {
     /// 控制单选ui
     List<FollowUserTag> copiedList = [
       controller.tagList.first,
-      ...controller.tagList.skip(3),
+      ...controller.tagList.skip(4),
     ];
     Rx<FollowUserTag> checkTag =
-        controller.tagList.indexOf(controller.filterMode.value) < 3
+        controller.tagList.indexOf(controller.filterMode.value) < 4
             ? copiedList.first.obs
             : controller.filterMode.value.obs;
     final ScrollController scrollController = ScrollController();

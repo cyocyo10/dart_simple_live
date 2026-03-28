@@ -31,6 +31,9 @@ class FollowService extends GetxService {
   /// 直播中的用户列表
   RxList<FollowUser> liveList = RxList<FollowUser>();
 
+  /// 回放中的用户列表
+  RxList<FollowUser> replayList = RxList<FollowUser>();
+
   /// 未直播的用户列表
   RxList<FollowUser> notLiveList = RxList<FollowUser>();
 
@@ -226,11 +229,10 @@ class FollowService extends GetxService {
   Future updateLiveStatus(FollowUser item) async {
     try {
       var site = Sites.allSites[item.siteId]!;
-      // 先只查状态
-      var isLiving = await site.liveSite.getLiveStatus(roomId: item.roomId);
-      item.liveStatus.value = isLiving ? 2 : 1;
-      if (item.liveStatus.value == 2) {
-        // 只有正在直播时才查详细信息
+      var status = await site.liveSite.getLiveStatusDetail(roomId: item.roomId);
+      item.liveStatus.value = status;
+      if (status == 2 || status == 3) {
+        // 直播中或回放中都获取详情
         var detail = await site.liveSite.getRoomDetail(roomId: item.roomId);
         item.liveStartTime = detail.showTime;
       } else {
@@ -250,9 +252,15 @@ class FollowService extends GetxService {
   }
 
   void filterData() {
-    followList.sort((a, b) => b.liveStatus.value.compareTo(a.liveStatus.value));
+    // 排序优先级：直播(2) > 回放(3) > 未开播(1) > 加载中(0)
+    const statusPriority = {2: 4, 3: 3, 1: 1, 0: 0};
+    followList.sort((a, b) =>
+        (statusPriority[b.liveStatus.value] ?? 0)
+            .compareTo(statusPriority[a.liveStatus.value] ?? 0));
     liveList.assignAll(followList.where((x) => x.liveStatus.value == 2));
-    notLiveList.assignAll(followList.where((x) => x.liveStatus.value == 1));
+    replayList.assignAll(followList.where((x) => x.liveStatus.value == 3));
+    notLiveList.assignAll(
+        followList.where((x) => x.liveStatus.value == 1 || x.liveStatus.value == 0));
     _updatedListController.add(0);
   }
 

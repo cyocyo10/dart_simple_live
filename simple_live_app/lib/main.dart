@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -15,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_app/app/sub_window_app.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/app/utils/listen_fourth_button.dart';
 import 'package:simple_live_app/models/db/follow_user.dart';
@@ -36,7 +38,12 @@ import 'package:window_manager/window_manager.dart';
 import 'package:path/path.dart' as p;
 import 'package:dynamic_color/dynamic_color.dart';
 
-void main() async {
+void main(List<String> args) async {
+  if (args.firstOrNull == 'multi_window') {
+    _runSubWindow(args);
+    return;
+  }
+
   WidgetsFlutterBinding.ensureInitialized();
   await migrateData();
   await initWindow();
@@ -164,6 +171,42 @@ void initCoreLog() {
         Log.logPrint(msg);
     }
   };
+}
+
+void _runSubWindow(List<String> args) async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    final windowId = int.parse(args[1]);
+    final argument = args.length > 2 ? args[2] : '{}';
+
+    MediaKit.ensureInitialized();
+    await Hive.initFlutter(
+      (await getApplicationSupportDirectory()).path,
+    );
+    await _initSubWindowServices();
+    initCoreLog();
+
+    runApp(SubWindowApp(windowId: windowId, argument: argument));
+  } catch (e) {
+    runApp(MaterialApp(
+      home: Scaffold(body: Center(child: Text('子窗口启动失败: $e'))),
+    ));
+  }
+}
+
+Future<void> _initSubWindowServices() async {
+  Hive.registerAdapter(FollowUserAdapter());
+  Hive.registerAdapter(HistoryAdapter());
+  Hive.registerAdapter(FollowUserTagAdapter());
+
+  Utils.packageInfo = await PackageInfo.fromPlatform();
+  await Get.put(LocalStorageService()).init();
+  await Get.put(DBService()).init();
+  Get.put(AppSettingsController());
+  Get.put(BiliBiliAccountService());
+  Get.put(DouyinAccountService());
+  Get.put(FollowService());
 }
 
 class MyApp extends StatelessWidget {

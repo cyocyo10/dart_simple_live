@@ -156,6 +156,9 @@ class LocalStorageService extends GetxService {
   /// 开启多线程更新关注
   static const String kUpdateFollowThreadCount = "UpdateFollowThreadCount";
 
+  /// 桌面端多窗口模式（仅 Windows）
+  static const String kDesktopMultiWindow = "DesktopMultiWindow";
+
   /// WebDAV_服务器地址
   static const String kWebDAVUri = "WebDAVUri";
 

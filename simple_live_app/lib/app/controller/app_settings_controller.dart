@@ -83,6 +83,9 @@ class AppSettingsController extends GetxController {
     autoFullScreen.value = LocalStorageService.instance
         .getValue(LocalStorageService.kAutoFullScreen, false);
 
+    desktopMultiWindow.value = LocalStorageService.instance
+        .getValue(LocalStorageService.kDesktopMultiWindow, false);
+
     // ignore: invalid_use_of_protected_member
     shieldList.value = LocalStorageService.instance.shieldBox.values.toSet();
 
@@ -530,5 +533,12 @@ class AppSettingsController extends GetxController {
     playerForceHttps.value = e;
     LocalStorageService.instance
         .setValue(LocalStorageService.kPlayerForceHttps, e);
+  }
+
+  var desktopMultiWindow = false.obs;
+  void setDesktopMultiWindow(bool e) {
+    desktopMultiWindow.value = e;
+    LocalStorageService.instance
+        .setValue(LocalStorageService.kDesktopMultiWindow, e);
   }
 }

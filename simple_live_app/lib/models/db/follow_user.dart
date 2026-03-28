@@ -38,7 +38,7 @@ class FollowUser {
   String tag;
 
   /// 直播状态
-  /// 0=未知(加载中) 1=未开播 2=直播中
+  /// 0=未知(加载中) 1=未开播 2=直播中 3=回放中
   Rx<int> liveStatus = 0.obs;
 
   /// 开播时间戳

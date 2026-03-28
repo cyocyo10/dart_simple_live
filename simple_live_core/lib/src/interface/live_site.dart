@@ -82,6 +82,13 @@ class LiveSite {
     return Future.value(false);
   }
 
+  /// 查询直播状态详情
+  /// 返回值: 0=未知, 1=未开播, 2=直播中, 3=回放中
+  Future<int> getLiveStatusDetail({required String roomId}) async {
+    var isLive = await getLiveStatus(roomId: roomId);
+    return isLive ? 2 : 1;
+  }
+
   /// 读取指定房间的SC
   Future<List<LiveSuperChatMessage>> getSuperChatMessage(
       {required String roomId}) {

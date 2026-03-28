@@ -375,6 +375,15 @@ class DouyuSite implements LiveSite {
     return roomInfo["show_status"] == 1 && roomInfo["videoLoop"] != 1;
   }
 
+  @override
+  Future<int> getLiveStatusDetail({required String roomId}) async {
+    var roomInfo = await _getRoomInfo(roomId);
+    if (roomInfo["show_status"] == 1) {
+      return roomInfo["videoLoop"] == 1 ? 3 : 2; // 回放 or 直播
+    }
+    return 1; // 未开播
+  }
+
   int parseHotNum(String hn) {
     try {
       var num = double.parse(hn.replaceAll("万", ""));

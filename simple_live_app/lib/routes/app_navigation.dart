@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -50,9 +52,22 @@ class AppNavigator {
       }
     }
 
-    Get.toNamed(RoutePath.kLiveRoomDetail, arguments: site, parameters: {
-      "roomId": roomId,
-    });
+    if (Platform.isWindows &&
+        AppSettingsController.instance.desktopMultiWindow.value) {
+      final window = await DesktopMultiWindow.createWindow(jsonEncode({
+        'siteId': site.id,
+        'roomId': roomId,
+      }));
+      window
+        ..setTitle('${site.name} - $roomId')
+        ..setFrame(const Rect.fromLTWH(0, 0, 1280, 720))
+        ..center()
+        ..show();
+    } else {
+      Get.toNamed(RoutePath.kLiveRoomDetail, arguments: site, parameters: {
+        "roomId": roomId,
+      });
+    }
   }
 
   /// 跳转至哔哩哔哩登录

@@ -53,7 +53,9 @@ class FollowUserItem extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: item.liveStatus.value == 2
                               ? Colors.green
-                              : Colors.grey,
+                              : item.liveStatus.value == 3
+                                  ? Colors.orange
+                                  : Colors.grey,
                           borderRadius: AppStyle.radius12,
                         ),
                       ),
@@ -63,8 +65,11 @@ class FollowUserItem extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.normal,
-                          color:
-                              item.liveStatus.value == 2 ? null : Colors.grey,
+                          color: item.liveStatus.value == 2
+                              ? null
+                              : item.liveStatus.value == 3
+                                  ? Colors.orange
+                                  : Colors.grey,
                         ),
                       ),
                     ],
@@ -103,7 +108,7 @@ class FollowUserItem extends StatelessWidget {
                 ),
               ),
             )
-          else if (item.liveStatus.value == 2 && item.liveStartTime != null)
+          else if ((item.liveStatus.value == 2 || item.liveStatus.value == 3) && item.liveStartTime != null)
             Padding(
               padding: AppStyle.edgeInsetsL8,
               child: Text(
@@ -139,12 +144,17 @@ class FollowUserItem extends StatelessWidget {
   }
 
   String getStatus(int status) {
-    if (status == 0) {
-      return "读取中";
-    } else if (status == 1) {
-      return "未开播";
-    } else {
-      return "直播中";
+    switch (status) {
+      case 0:
+        return "读取中";
+      case 1:
+        return "未开播";
+      case 2:
+        return "直播中";
+      case 3:
+        return "回放中";
+      default:
+        return "未知";
     }
   }
 

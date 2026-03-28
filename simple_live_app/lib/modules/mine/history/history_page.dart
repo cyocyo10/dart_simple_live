@@ -80,6 +80,46 @@ class HistoryPage extends GetView<HistoryController> {
                       ],
                     ),
                   ),
+                  Obx(() {
+                    var status = controller.liveStatusMap[item.id] ?? 0;
+                    if (status == 0) return const SizedBox.shrink();
+                    return Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: status == 2
+                            ? Colors.green.withOpacity(0.1)
+                            : status == 3
+                                ? Colors.orange.withOpacity(0.1)
+                                : Colors.transparent,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: status == 2
+                              ? Colors.green
+                              : status == 3
+                                  ? Colors.orange
+                                  : Colors.grey.withOpacity(0.5),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Text(
+                        status == 2
+                            ? "直播中"
+                            : status == 3
+                                ? "回放中"
+                                : "未开播",
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: status == 2
+                              ? Colors.green
+                              : status == 3
+                                  ? Colors.orange
+                                  : Colors.grey,
+                        ),
+                      ),
+                    );
+                  }),
                   Text(
                     Utils.parseTime(item.updateTime),
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
