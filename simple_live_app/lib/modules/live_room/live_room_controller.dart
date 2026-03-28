@@ -116,7 +116,10 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     initAutoExit();
     showDanmakuState.value = AppSettingsController.instance.danmuEnable.value;
     followed.value = DBService.instance.getFollowExist("${site.id}_$roomId");
-    loadData();
+    // 延迟到下一帧，确保 SmartDialog overlay 在子窗口中已就绪
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      loadData();
+    });
 
     scrollController.addListener(scrollListener);
 
