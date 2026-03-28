@@ -80,15 +80,73 @@ class AccountController extends GetxController {
   }
 
   void douyinTap() async {
-    if (DouyinAccountService.instance.hasCookie.value) {
-      var result = await Utils.showAlertDialog("确定要清除自定义 ttwid 吗？", title: "清除配置");
+    if (DouyinAccountService.instance.hasSearchCookie.value) {
+      var result = await Utils.showAlertDialog(
+        "退出后抖音搜索功能将不可用，ttwid 配置不受影响。",
+        title: "退出抖音搜索账号",
+      );
       if (result) {
-        DouyinAccountService.instance.clearCookie();
-        SmartDialog.showToast("已清除自定义 ttwid，将使用默认 ttwid");
+        DouyinAccountService.instance.clearSearchCookie();
+        SmartDialog.showToast("已退出，搜索将使用匿名模式");
       }
     } else {
-      doDouyinCookieConfig();
+      douyinLogin();
     }
+  }
+
+  void douyinLogin() {
+    Utils.showBottomSheet(
+      title: "抖音直播",
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Visibility(
+            visible: Platform.isAndroid || Platform.isIOS,
+            child: ListTile(
+              leading: const Icon(Icons.search),
+              title: const Text("登录以启用搜索"),
+              subtitle: const Text("在 WebView 中登录抖音，仅用于搜索"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Get.back();
+                Get.toNamed(RoutePath.kDouyinWebLogin);
+              },
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text("手动输入搜索 Cookie"),
+            subtitle: const Text("从浏览器复制完整 Cookie"),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Get.back();
+              doDouyinSearchCookieInput();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text("配置 ttwid"),
+            subtitle: const Text("自定义通用 Cookie（不影响搜索）"),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Get.back();
+              doDouyinCookieConfig();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void doDouyinSearchCookieInput() async {
+    var cookie = await Utils.showEditTextDialog(
+      "",
+      title: "输入抖音搜索 Cookie",
+      hintText: "从浏览器登录 douyin.com 后复制完整 Cookie",
+    );
+    if (cookie == null || cookie.isEmpty) return;
+    DouyinAccountService.instance.setSearchCookie(cookie);
+    SmartDialog.showToast("搜索 Cookie 已保存");
   }
 
   void doDouyinCookieConfig() {
