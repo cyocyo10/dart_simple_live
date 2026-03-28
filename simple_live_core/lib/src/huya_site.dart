@@ -706,6 +706,12 @@ class HuyaSite implements LiveSite {
     //尚不支持
     return Future.value([]);
   }
+
+  @override
+  Future<int> getLiveStatusDetail({required String roomId}) async {
+    var isLive = await getLiveStatus(roomId: roomId);
+    return isLive ? 2 : 1;
+  }
 }
 
 class HuyaUrlDataModel {
