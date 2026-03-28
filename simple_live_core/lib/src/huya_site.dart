@@ -17,15 +17,14 @@ class HuyaSite implements LiveSite {
   static const String HYSDK_UA =
       "HYSDK(Windows, 30000002)_APP(pc_exe&7060000&official)_SDK(trans&2.32.3.5646)";
 
-  static Map<String, String> requestHeaders =  {
-      'Origin': baseUrl,
-      'Referer': baseUrl,
-      'User-Agent': HYSDK_UA,
+  static Map<String, String> requestHeaders = {
+    'Origin': baseUrl,
+    'Referer': baseUrl,
+    'User-Agent': HYSDK_UA,
   };
 
   final BaseTarsHttp tupClient =
-  BaseTarsHttp("http://wup.huya.com", "liveui", headers: requestHeaders);
-
+      BaseTarsHttp("http://wup.huya.com", "liveui", headers: requestHeaders);
   String? playUserAgent;
   @override
   String id = "huya";
@@ -203,7 +202,7 @@ class HuyaSite implements LiveSite {
       CoreLog.error(e);
     }
     return playUserAgent ??
-        HYSDK_UA;
+        "HYSDK(Windows, 30000002)_APP(pc_exe&6080100&official)_SDK(trans&2.23.0.4969)";
   }
 
   @override
@@ -234,7 +233,84 @@ class HuyaSite implements LiveSite {
     return url;
   }
 
-  /// 获取 CDN Token
+  // 构造 anticode, python转写
+  /// [stream] streamname [presenterUid] 用户id [antiCode] 页面anti
+  ///
+  /// return true anticode
+  String buildAntiCode(String stream, int presenterUid, String antiCode) {
+    var mapAnti = Uri(query: antiCode).queryParametersAll;
+    if (!mapAnti.containsKey("fm")) {
+      return antiCode;
+    }
+
+    var ctype = mapAnti["ctype"]?.first ?? "huya_pc_exe";
+    var platformId = int.tryParse(mapAnti["t"]?.first ?? "0") ?? 0;
+
+    bool isWap = platformId == 103;
+    var clacStartTime = DateTime.now().millisecondsSinceEpoch;
+
+    CoreLog.i(
+        "using $presenterUid | ctype-{$ctype} | platformId - {$platformId} | isWap - {$isWap} | $clacStartTime");
+
+    var seqId = presenterUid + clacStartTime;
+    final secretHash =
+        md5.convert(utf8.encode('$seqId|$ctype|$platformId')).toString();
+
+    final convertUid = rotl64(presenterUid);
+    final calcUid = isWap ? presenterUid : convertUid;
+    final fmValue =
+        mapAnti['fm']?.isNotEmpty == true ? mapAnti['fm']!.first : null;
+    final wsTime =
+        mapAnti['wsTime']?.isNotEmpty == true ? mapAnti['wsTime']!.first : null;
+    final fsValue =
+        mapAnti['fs']?.isNotEmpty == true ? mapAnti['fs']!.first : null;
+    if (fmValue == null || wsTime == null || fsValue == null) {
+      return antiCode;
+    }
+    final wsTimeInt = int.tryParse(wsTime, radix: 16);
+    if (wsTimeInt == null) {
+      return antiCode;
+    }
+    String secretPrefix;
+    try {
+      final fm = Uri.decodeComponent(fmValue);
+      secretPrefix = utf8.decode(base64.decode(fm)).split('_').first;
+    } on FormatException {
+      return antiCode;
+    }
+    final secretStr =
+        '${secretPrefix}_${calcUid}_${stream}_${secretHash}_$wsTime';
+
+    final wsSecret = md5.convert(utf8.encode(secretStr)).toString();
+
+    final rnd = Random();
+    final ct = ((wsTimeInt + rnd.nextDouble()) * 1000).toInt();
+    final uuid = (((ct % 1e10) + rnd.nextDouble()) * 1e3 % 0xffffffff)
+        .toInt()
+        .toString();
+    final Map<String, dynamic> antiCodeRes = {
+      'wsSecret': wsSecret,
+      'wsTime': wsTime,
+      'seqid': seqId,
+      'ctype': ctype,
+      'ver': '1',
+      'fs': fsValue,
+      'fm': Uri.encodeComponent(fmValue),
+      't': platformId,
+    };
+    if (isWap) {
+      antiCodeRes.addAll({
+        'uid': presenterUid,
+        'uuid': uuid,
+      });
+    } else {
+      antiCodeRes['u'] = convertUid;
+    }
+
+    return antiCodeRes.entries.map((e) => '${e.key}=${e.value}').join('&');
+  }
+
+  /// return sFlvToken
   Future<String> getCdnTokenInfoEx(String stream) async {
     var func = "getCdnTokenInfoEx";
     var tid = HuyaUserId();
@@ -244,55 +320,6 @@ class HuyaSite implements LiveSite {
     tReq.sStreamName = stream;
     var resp = await tupClient.tupRequest(func, tReq, GetCdnTokenExResp());
     return resp.sFlvToken;
-  }
-
-  /// 构造 anticode
-  String buildAntiCode(String stream, int presenterUid, String antiCode) {
-    var mapAnti = Uri(query: antiCode).queryParametersAll;
-    if (!mapAnti.containsKey("fm")) {
-      return antiCode;
-    }
-
-    var ctype = mapAnti["ctype"]?.first ?? "huya_pc_exe";
-    var platformId = int.tryParse(mapAnti["t"]?.first ?? "0");
-
-    bool isWap = platformId == 103;
-    var clacStartTime = DateTime.now().millisecondsSinceEpoch;
-
-    CoreLog.i("using $presenterUid | ctype-{$ctype} | platformId - {$platformId} | isWap - {$isWap} | $clacStartTime");
-
-    var seqId = presenterUid + clacStartTime;
-    final secretHash = md5.convert(utf8.encode('$seqId|$ctype|$platformId')).toString();
-
-    final convertUid = rotl64(presenterUid);
-    final calcUid = isWap ? presenterUid : convertUid;
-    final fm = Uri.decodeComponent(mapAnti['fm']!.first);
-    final secretPrefix = utf8.decode(base64.decode(fm)).split('_').first;
-    var wsTime = mapAnti['wsTime']!.first;
-    final secretStr = '${secretPrefix}_${calcUid}_${stream}_${secretHash}_$wsTime';
-
-    final wsSecret = md5.convert(utf8.encode(secretStr)).toString();
-
-    final rnd = Random();
-    final ct = ((int.parse(wsTime, radix: 16) + rnd.nextDouble()) * 1000).toInt();
-    final uuid = (((ct % 1e10) + rnd.nextDouble()) * 1e3 % 0xffffffff).toInt().toString();
-    final Map<String, dynamic> antiCodeRes = {
-      'wsSecret': wsSecret,
-      'wsTime': wsTime,
-      'seqid': seqId,
-      'ctype': ctype,
-      'ver': '1',
-      'fs': mapAnti['fs']!.first,
-      'fm': Uri.encodeComponent(mapAnti['fm']!.first),
-      't': platformId,
-    };
-    if (isWap) {
-      antiCodeRes.addAll({'uid': presenterUid, 'uuid': uuid});
-    } else {
-      antiCodeRes['u'] = convertUid;
-    }
-
-    return antiCodeRes.entries.map((e) => '${e.key}=${e.value}').join('&');
   }
 
   int rotl64(int t) {
@@ -338,6 +365,13 @@ class HuyaSite implements LiveSite {
     return LiveCategoryResult(hasMore: hasMore, items: items);
   }
 
+  int parseHuyaInt(dynamic value) {
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+
   @override
   Future<LiveRoomDetail> getRoomDetail({required String roomId}) async {
     var roomInfo = await _getRoomInfo(roomId);
@@ -354,9 +388,9 @@ class HuyaSite implements LiveSite {
     var lines = tLiveInfo["tLiveStreamInfo"]["vStreamInfo"]["value"];
     for (var item in lines) {
       if ((item["sFlvUrl"]?.toString() ?? "").isNotEmpty) {
-        var channelId = item["lChannelId"];
-        if (channelId is String) {
-          channelId = int.tryParse(channelId) ?? 0;
+        var presenterUid = parseHuyaInt(roomInfo["topSid"]);
+        if (presenterUid == 0) {
+          presenterUid = parseHuyaInt(item["lChannelId"]);
         }
         huyaLines.add(HuyaLineModel(
           line: item["sFlvUrl"].toString(),
@@ -365,7 +399,7 @@ class HuyaSite implements LiveSite {
           hlsAntiCode: item["sHlsAntiCode"].toString(),
           streamName: item["sStreamName"].toString(),
           cdnType: item["sCdnType"].toString(),
-          presenterUid: channelId,
+          presenterUid: presenterUid,
         ));
       }
     }
@@ -425,7 +459,10 @@ class HuyaSite implements LiveSite {
             multiLine: false)
         .firstMatch(resultText)
         ?.group(0);
-    var jsonText = text!
+    if (text == null || text.isEmpty) {
+      throw Exception("无法解析虎牙直播间数据");
+    }
+    var jsonText = text
         .replaceAll(RegExp(r"window\.HNF_GLOBAL_INIT.=."), '')
         .replaceAll("</script>", "")
         .replaceAllMapped(RegExp(r'function.*?\(.*?\).\{[\s\S]*?\}'), (match) {
@@ -433,9 +470,22 @@ class HuyaSite implements LiveSite {
     });
 
     var jsonObj = json.decode(jsonText);
-    var topSid = int.tryParse(
+
+    // topSid: prefer parsed JSON field over regex for reliability;
+    // fall back to lChannelId regex when JSON field is absent/zero.
+    int? jsonTopSid;
+    try {
+      var raw = jsonObj['roomInfo']?['tLiveInfo']?['lChannelId'];
+      if (raw != null) {
+        jsonTopSid = raw is int ? raw : int.tryParse(raw.toString());
+      }
+    } catch (_) {}
+    var regexTopSid = int.tryParse(
         RegExp(r'lChannelId":([0-9]+)').firstMatch(resultText)?.group(1) ??
             "0");
+    var topSid =
+        (jsonTopSid != null && jsonTopSid != 0) ? jsonTopSid : regexTopSid;
+
     var subSid = int.tryParse(
         RegExp(r'lSubChannelId":([0-9]+)').firstMatch(resultText)?.group(1) ??
             "0");
@@ -694,8 +744,8 @@ class HuyaLineModel {
   final String hlsAntiCode;
   final String streamName;
   final HuyaLineType lineType;
-  final int presenterUid;
   int bitRate;
+  final int presenterUid; // topSid = subSid = presenterUid
 
   HuyaLineModel({
     required this.line,
@@ -704,8 +754,8 @@ class HuyaLineModel {
     required this.hlsAntiCode,
     required this.streamName,
     required this.cdnType,
-    required this.presenterUid,
     this.bitRate = 0,
+    required this.presenterUid,
   });
 
   @override

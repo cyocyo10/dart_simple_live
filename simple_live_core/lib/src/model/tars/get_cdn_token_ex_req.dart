@@ -1,9 +1,9 @@
-import 'package:simple_live_core/src/model/tars/huya_user_id.dart';
-import 'package:tars_dart/tars/codec/tars_struct.dart';
 import 'package:tars_dart/tars/codec/tars_displayer.dart';
 import 'package:tars_dart/tars/codec/tars_input_stream.dart';
 import 'package:tars_dart/tars/codec/tars_output_stream.dart';
-// ignore_for_file: no_leading_underscores_for_local_identifiers
+import 'package:tars_dart/tars/codec/tars_struct.dart';
+
+import 'huya_user_id.dart';
 
 class GetCdnTokenExReq extends TarsStruct {
   String sFlvUrl = ""; //tag 0

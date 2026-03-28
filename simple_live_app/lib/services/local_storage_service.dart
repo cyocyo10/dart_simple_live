@@ -120,6 +120,9 @@ class LocalStorageService extends GetxService {
   /// 抖音cookie
   static const String kDouyinCookie = "DouyinCookie";
 
+  /// 抖音搜索专用 Cookie（登录态，隐私隔离）
+  static const String kDouyinSearchCookie = "DouyinSearchCookie";
+
   ///主题色
   static const String kStyleColor = "kStyleColor";
 
