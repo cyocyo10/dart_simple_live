@@ -46,8 +46,8 @@ class DouyinWebLoginController extends BaseController {
       DouyinAccountService.instance.setSearchCookie(cookieStr);
       SmartDialog.showToast("抖音登录成功，搜索功能已启用");
       Get.back();
-    } catch (e) {
-      Log.e("[DouyinLogin] Failed to capture cookie", e);
+    } catch (e, s) {
+      Log.e("[DouyinLogin] Failed to capture cookie", s);
     }
   }
 
