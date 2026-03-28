@@ -54,15 +54,13 @@ class AppNavigator {
 
     if (Platform.isWindows &&
         AppSettingsController.instance.desktopMultiWindow.value) {
-      final window = await DesktopMultiWindow.createWindow(jsonEncode({
-        'siteId': site.id,
-        'roomId': roomId,
-      }));
-      window
-        ..setTitle('${site.name} - $roomId')
-        ..setFrame(const Rect.fromLTWH(0, 0, 1280, 720))
-        ..center()
-        ..show();
+      final controller = await WindowController.create(WindowConfiguration(
+        arguments: jsonEncode({
+          'siteId': site.id,
+          'roomId': roomId,
+        }),
+      ));
+      await controller.show();
     } else {
       Get.toNamed(RoutePath.kLiveRoomDetail, arguments: site, parameters: {
         "roomId": roomId,

@@ -34,17 +34,22 @@ import 'package:simple_live_app/services/sync_service.dart';
 import 'package:simple_live_app/widgets/status/app_loadding_widget.dart';
 import 'package:simple_live_core/simple_live_core.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:desktop_multi_window/desktop_multi_window.dart';
 
 import 'package:path/path.dart' as p;
 import 'package:dynamic_color/dynamic_color.dart';
 
 void main(List<String> args) async {
-  if (args.firstOrNull == 'multi_window') {
-    _runSubWindow(args);
-    return;
-  }
-
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 桌面端：检查是否为子窗口
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    final windowController = await WindowController.fromCurrentEngine();
+    if (windowController.arguments.isNotEmpty) {
+      _runSubWindow(windowController.arguments);
+      return;
+    }
+  }
   await migrateData();
   await initWindow();
   MediaKit.ensureInitialized();
@@ -173,13 +178,8 @@ void initCoreLog() {
   };
 }
 
-void _runSubWindow(List<String> args) async {
-  WidgetsFlutterBinding.ensureInitialized();
-
+void _runSubWindow(String argument) async {
   try {
-    final windowId = int.parse(args[1]);
-    final argument = args.length > 2 ? args[2] : '{}';
-
     MediaKit.ensureInitialized();
     await Hive.initFlutter(
       (await getApplicationSupportDirectory()).path,
@@ -187,7 +187,24 @@ void _runSubWindow(List<String> args) async {
     await _initSubWindowServices();
     initCoreLog();
 
-    runApp(SubWindowApp(windowId: windowId, argument: argument));
+    // 子窗口用 window_manager 配置自身窗口属性
+    await windowManager.ensureInitialized();
+    try {
+      final params = jsonDecode(argument) as Map<String, dynamic>;
+      final siteId = params['siteId'] as String? ?? '';
+      final roomId = params['roomId'] as String? ?? '';
+      await windowManager.setTitle('$siteId - $roomId');
+    } catch (_) {}
+    WindowOptions windowOptions = const WindowOptions(
+      size: Size(1280, 720),
+      center: true,
+    );
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    });
+
+    runApp(SubWindowApp(argument: argument));
   } catch (e) {
     runApp(MaterialApp(
       home: Scaffold(body: Center(child: Text('子窗口启动失败: $e'))),

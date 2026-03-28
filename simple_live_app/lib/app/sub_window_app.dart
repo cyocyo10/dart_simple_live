@@ -12,12 +12,10 @@ import 'package:simple_live_app/modules/live_room/live_room_page.dart';
 import 'package:simple_live_app/widgets/status/app_loadding_widget.dart';
 
 class SubWindowApp extends StatelessWidget {
-  final int windowId;
   final String argument;
 
   const SubWindowApp({
     super.key,
-    required this.windowId,
     required this.argument,
   });
 
