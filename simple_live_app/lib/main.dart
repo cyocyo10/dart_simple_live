@@ -180,10 +180,16 @@ void initCoreLog() {
 
 void _runSubWindow(String argument) async {
   try {
+    final windowController = await WindowController.fromCurrentEngine();
+
     MediaKit.ensureInitialized();
-    await Hive.initFlutter(
-      (await getApplicationSupportDirectory()).path,
-    );
+    final baseDir = (await getApplicationSupportDirectory()).path;
+    final subDir = p.join(baseDir, 'subwindow_${windowController.windowId}');
+
+    // 复制主窗口 Hive 数据到子窗口独立目录，避免文件锁冲突
+    await _copyHiveFiles(baseDir, subDir);
+
+    await Hive.initFlutter(subDir);
     await _initSubWindowServices();
     initCoreLog();
 
@@ -209,6 +215,22 @@ void _runSubWindow(String argument) async {
     runApp(MaterialApp(
       home: Scaffold(body: Center(child: Text('子窗口启动失败: $e'))),
     ));
+  }
+}
+
+/// 复制主窗口关键 Hive 文件到子窗口目录（设置/关注/标签）
+Future<void> _copyHiveFiles(String srcDir, String destDir) async {
+  final dir = Directory(destDir);
+  if (!await dir.exists()) {
+    await dir.create(recursive: true);
+  }
+  for (final name in ['localstorage', 'followuser', 'followusertag']) {
+    final srcFile = File(p.join(srcDir, '$name.hive'));
+    if (await srcFile.exists()) {
+      try {
+        await srcFile.copy(p.join(destDir, '$name.hive'));
+      } catch (_) {}
+    }
   }
 }
 
