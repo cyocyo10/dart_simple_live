@@ -6,17 +6,43 @@
 #include "desktop_multi_window/desktop_multi_window_plugin.h"
 
 #include <connectivity_plus/connectivity_plus_windows_plugin.h>
+#include <media_kit_libs_windows_video/media_kit_libs_windows_video_plugin_c_api.h>
+#include <media_kit_video/media_kit_video_plugin_c_api.h>
+#include <volume_controller/volume_controller_plugin_c_api.h>
+#include <screen_brightness_windows/screen_brightness_windows_plugin.h>
 
 // 自定义消息：延迟注册子窗口插件
 #define WM_REGISTER_SUB_WINDOW_PLUGINS (WM_APP + 100)
 
 static flutter::PluginRegistry* g_pending_registry = nullptr;
 static HWND g_main_hwnd = nullptr;
+// 保存主窗口被 MediaKitVideoPlugin 子类化之前的原始 WNDPROC
+static WNDPROC g_main_original_wndproc = nullptr;
 
-// 测试：只注册 connectivity_plus（最轻量的插件）
+// 子窗口需要的插件：视频播放 + 音量 + 亮度 + 网络状态
+// 不注册 window_manager（会覆盖主窗口的静态 channel）
 static void RegisterPluginsForSubWindow(flutter::PluginRegistry* registry) {
+  MediaKitLibsWindowsVideoPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("MediaKitLibsWindowsVideoPluginCApi"));
+  MediaKitVideoPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("MediaKitVideoPluginCApi"));
+  VolumeControllerPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("VolumeControllerPluginCApi"));
+  ScreenBrightnessWindowsPluginRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("ScreenBrightnessWindowsPlugin"));
   ConnectivityPlusWindowsPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("ConnectivityPlusWindowsPlugin"));
+
+  // 关键修复：MediaKitVideoPlugin 的 RegisterWithRegistrar 内部用
+  // SetWindowLongPtr 子类化窗口，且使用 static instance_ 单例指针。
+  // 子窗口注册后 instance_ 被覆盖为子窗口实例，导致主窗口的
+  // WindowProcDelegate 通过错误的 original_window_proc_ 路由消息 → 锁死。
+  // 修复：将主窗口的 WNDPROC 恢复为 MediaKitVideoPlugin 子类化之前的
+  // 原始 Flutter 处理函数，绕过被污染的 WindowProcDelegate 链。
+  if (g_main_hwnd && g_main_original_wndproc) {
+    SetWindowLongPtr(g_main_hwnd, GWLP_WNDPROC,
+                     reinterpret_cast<LONG_PTR>(g_main_original_wndproc));
+  }
 }
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -39,9 +65,14 @@ bool FlutterWindow::OnCreate() {
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
     return false;
   }
-  RegisterPlugins(flutter_controller_->engine());
-
+  // 保存 RegisterPlugins 前的 WNDPROC（Flutter 原始处理函数）。
+  // MediaKitVideoPlugin 会在 RegisterPlugins 中用 SetWindowLongPtr 子类化
+  // 主窗口。后续子窗口注册时需用此值恢复主窗口的 WNDPROC。
   g_main_hwnd = GetHandle();
+  g_main_original_wndproc = reinterpret_cast<WNDPROC>(
+      GetWindowLongPtr(g_main_hwnd, GWLP_WNDPROC));
+
+  RegisterPlugins(flutter_controller_->engine());
 
   // 子窗口创建回调：不在此处同步注册插件（会阻塞主窗口消息循环），
   // 而是通过 PostMessage 延迟到下一轮消息循环处理
