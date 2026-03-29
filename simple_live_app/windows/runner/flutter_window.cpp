@@ -11,18 +11,10 @@
 #include <media_kit_video/media_kit_video_plugin_c_api.h>
 #include <screen_retriever_windows/screen_retriever_windows_plugin_c_api.h>
 
-// 子窗口插件注册：排除 window_manager 避免覆盖主窗口的全局 channel
+// 子窗口插件注册：最小化注册，排除可能覆盖全局 channel 的插件
 static void RegisterPluginsForSubWindow(flutter::PluginRegistry* registry) {
-  ConnectivityPlusWindowsPluginRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("ConnectivityPlusWindowsPlugin"));
-  DynamicColorPluginCApiRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("DynamicColorPluginCApi"));
-  MediaKitLibsWindowsVideoPluginCApiRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("MediaKitLibsWindowsVideoPluginCApi"));
-  MediaKitVideoPluginCApiRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("MediaKitVideoPluginCApi"));
-  ScreenRetrieverWindowsPluginCApiRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("ScreenRetrieverWindowsPluginCApi"));
+  // 暂时不注册任何插件，测试是否为插件注册导致主窗口锁死
+  (void)registry;
 }
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
