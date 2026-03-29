@@ -42,9 +42,8 @@ import 'package:dynamic_color/dynamic_color.dart';
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 桌面端：所有窗口（主窗口+子窗口）统一先初始化 window_manager
+  // 桌面端：检查是否为子窗口
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-    await windowManager.ensureInitialized();
     final windowController = await WindowController.fromCurrentEngine();
     if (windowController.arguments.isNotEmpty) {
       _runSubWindow(windowController.arguments);
@@ -193,22 +192,6 @@ void _runSubWindow(String argument) async {
     await Hive.initFlutter(subDir);
     await _initSubWindowServices();
     initCoreLog();
-
-    // 子窗口自行配置窗口属性并显示（window_manager 已在 main 中初始化）
-    try {
-      final params = jsonDecode(argument) as Map<String, dynamic>;
-      final siteId = params['siteId'] as String? ?? '';
-      final roomId = params['roomId'] as String? ?? '';
-      await windowManager.setTitle('$siteId - $roomId');
-    } catch (_) {}
-    WindowOptions windowOptions = const WindowOptions(
-      size: Size(1280, 720),
-      center: true,
-    );
-    windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-    });
 
     runApp(SubWindowApp(argument: argument));
   } catch (e) {
