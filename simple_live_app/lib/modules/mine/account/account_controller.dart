@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
@@ -28,18 +26,15 @@ class AccountController extends GetxController {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Visibility(
-            visible: Platform.isAndroid || Platform.isIOS,
-            child: ListTile(
-              leading: const Icon(Icons.account_circle_outlined),
-              title: const Text("Web登录"),
-              subtitle: const Text("填写用户名密码登录"),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Get.back();
-                Get.toNamed(RoutePath.kBiliBiliWebLogin);
-              },
-            ),
+          ListTile(
+            leading: const Icon(Icons.account_circle_outlined),
+            title: const Text("Web登录"),
+            subtitle: const Text("填写用户名密码登录"),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Get.back();
+              Get.toNamed(RoutePath.kBiliBiliWebLogin);
+            },
           ),
           ListTile(
             leading: const Icon(Icons.qr_code),
@@ -100,18 +95,15 @@ class AccountController extends GetxController {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Visibility(
-            visible: Platform.isAndroid || Platform.isIOS,
-            child: ListTile(
-              leading: const Icon(Icons.search),
-              title: const Text("登录以启用搜索"),
-              subtitle: const Text("在 WebView 中登录抖音，仅用于搜索"),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Get.back();
-                Get.toNamed(RoutePath.kDouyinWebLogin);
-              },
-            ),
+          ListTile(
+            leading: const Icon(Icons.search),
+            title: const Text("登录以启用搜索"),
+            subtitle: const Text("在 WebView 中登录抖音，仅用于搜索"),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Get.back();
+              Get.toNamed(RoutePath.kDouyinWebLogin);
+            },
           ),
           ListTile(
             leading: const Icon(Icons.edit_outlined),
