@@ -1,13 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:simple_live_app/app/constant.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
-import 'package:simple_live_app/app/sites.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/models/sync_client_info_model.dart';
 import 'package:simple_live_app/routes/route_path.dart';
@@ -54,16 +52,13 @@ class AppNavigator {
 
     if (Platform.isWindows &&
         AppSettingsController.instance.desktopMultiWindow.value) {
-      final controller = await WindowController.create(WindowConfiguration(
-        hiddenAtLaunch: true,
-        arguments: jsonEncode({
-          'siteId': site.id,
-          'roomId': roomId,
-        }),
-      ));
-      // 等子窗口引擎就绪后再显示
-      await Future.delayed(const Duration(milliseconds: 500));
-      await controller.show();
+      // 多进程方案：启动独立进程作为子窗口，
+      // 避免 MediaKitVideoPlugin static 单例在同进程多引擎下冲突
+      // (media-kit/media-kit#1341)
+      Process.start(
+        Platform.resolvedExecutable,
+        ['--sub-window', jsonEncode({'siteId': site.id, 'roomId': roomId})],
+      );
     } else {
       Get.toNamed(RoutePath.kLiveRoomDetail, arguments: site, parameters: {
         "roomId": roomId,

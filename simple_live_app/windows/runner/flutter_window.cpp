@@ -3,13 +3,6 @@
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
-#include "desktop_multi_window/desktop_multi_window_plugin.h"
-
-#include <connectivity_plus/connectivity_plus_windows_plugin.h>
-#include <media_kit_libs_windows_video/media_kit_libs_windows_video_plugin_c_api.h>
-#include <media_kit_video/media_kit_video_plugin_c_api.h>
-#include <volume_controller/volume_controller_plugin_c_api.h>
-#include <screen_brightness_windows/screen_brightness_windows_plugin.h>
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -32,25 +25,6 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
-
-  // 参考 IPTV-Player-MacOs/iptv_player 的做法：
-  // 直接在回调中同步注册子窗口插件（不用 PostMessage 延迟）
-  DesktopMultiWindowSetWindowCreatedCallback([](void *controller) {
-    auto *flutter_view_controller =
-        reinterpret_cast<flutter::FlutterViewController *>(controller);
-    auto *registry = flutter_view_controller->engine();
-
-    MediaKitLibsWindowsVideoPluginCApiRegisterWithRegistrar(
-        registry->GetRegistrarForPlugin("MediaKitLibsWindowsVideoPluginCApi"));
-    MediaKitVideoPluginCApiRegisterWithRegistrar(
-        registry->GetRegistrarForPlugin("MediaKitVideoPluginCApi"));
-    VolumeControllerPluginCApiRegisterWithRegistrar(
-        registry->GetRegistrarForPlugin("VolumeControllerPluginCApi"));
-    ScreenBrightnessWindowsPluginRegisterWithRegistrar(
-        registry->GetRegistrarForPlugin("ScreenBrightnessWindowsPlugin"));
-    ConnectivityPlusWindowsPluginRegisterWithRegistrar(
-        registry->GetRegistrarForPlugin("ConnectivityPlusWindowsPlugin"));
-  });
 
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 

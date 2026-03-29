@@ -16,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_app/app/sites.dart';
 import 'package:simple_live_app/app/sub_window_app.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/app/utils/listen_fourth_button.dart';
@@ -34,7 +35,6 @@ import 'package:simple_live_app/services/sync_service.dart';
 import 'package:simple_live_app/widgets/status/app_loadding_widget.dart';
 import 'package:simple_live_core/simple_live_core.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:desktop_multi_window/desktop_multi_window.dart';
 
 import 'package:path/path.dart' as p;
 import 'package:dynamic_color/dynamic_color.dart';
@@ -42,13 +42,10 @@ import 'package:dynamic_color/dynamic_color.dart';
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 桌面端：检查是否为子窗口
-  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-    final windowController = await WindowController.fromCurrentEngine();
-    if (windowController.arguments.isNotEmpty) {
-      _runSubWindow(windowController.arguments);
-      return;
-    }
+  // 桌面端：检查是否为子窗口进程（通过命令行参数 --sub-window 传递）
+  if (args.isNotEmpty && args[0] == '--sub-window') {
+    _runSubWindow(args.length > 1 ? args[1] : '{}');
+    return;
   }
   await migrateData();
   await initWindow();
@@ -180,18 +177,38 @@ void initCoreLog() {
 
 void _runSubWindow(String argument) async {
   try {
-    final windowController = await WindowController.fromCurrentEngine();
-
     MediaKit.ensureInitialized();
     final baseDir = (await getApplicationSupportDirectory()).path;
-    final subDir = p.join(baseDir, 'subwindow_${windowController.windowId}');
+    final subDir = p.join(baseDir, 'subwindow_$pid');
 
-    // 复制主窗口 Hive 数据到子窗口独立目录，避免文件锁冲突
     await _copyHiveFiles(baseDir, subDir);
 
     await Hive.initFlutter(subDir);
     await _initSubWindowServices();
     initCoreLog();
+
+    // 设置子窗口属性
+    await windowManager.ensureInitialized();
+    String title = '直播间';
+    try {
+      final params = jsonDecode(argument) as Map<String, dynamic>;
+      final siteId = params['siteId'] as String?;
+      final roomId = params['roomId'] as String?;
+      if (siteId != null && roomId != null) {
+        final site = Sites.allSites[siteId];
+        title = '${site?.name ?? siteId} - $roomId';
+      }
+    } catch (_) {}
+    WindowOptions windowOptions = WindowOptions(
+      minimumSize: const Size(400, 300),
+      size: const Size(960, 540),
+      center: true,
+      title: title,
+    );
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    });
 
     runApp(SubWindowApp(argument: argument));
   } catch (e) {
