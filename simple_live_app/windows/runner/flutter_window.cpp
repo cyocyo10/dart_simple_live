@@ -8,12 +8,10 @@
 #include <media_kit_libs_windows_video/media_kit_libs_windows_video_plugin_c_api.h>
 #include <media_kit_video/media_kit_video_plugin_c_api.h>
 
-// 子窗口插件注册：只注册视频播放必需的插件，排除会覆盖全局 channel 的插件
+// 子窗口插件注册：逐一排查，先只注册 libs（不含渲染插件）
 static void RegisterPluginsForSubWindow(flutter::PluginRegistry* registry) {
   MediaKitLibsWindowsVideoPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("MediaKitLibsWindowsVideoPluginCApi"));
-  MediaKitVideoPluginCApiRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("MediaKitVideoPluginCApi"));
 }
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
