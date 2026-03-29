@@ -54,13 +54,13 @@ class AppNavigator {
 
     if (Platform.isWindows &&
         AppSettingsController.instance.desktopMultiWindow.value) {
-      final controller = await WindowController.create(WindowConfiguration(
+      // 子窗口通过 windowManager.waitUntilReadyToShow 自行显示，此处只需创建
+      await WindowController.create(WindowConfiguration(
         arguments: jsonEncode({
           'siteId': site.id,
           'roomId': roomId,
         }),
       ));
-      await controller.show();
     } else {
       Get.toNamed(RoutePath.kLiveRoomDetail, arguments: site, parameters: {
         "roomId": roomId,

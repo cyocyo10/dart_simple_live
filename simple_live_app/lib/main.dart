@@ -42,8 +42,9 @@ import 'package:dynamic_color/dynamic_color.dart';
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 桌面端：检查是否为子窗口
+  // 桌面端：所有窗口（主窗口+子窗口）统一先初始化 window_manager
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    await windowManager.ensureInitialized();
     final windowController = await WindowController.fromCurrentEngine();
     if (windowController.arguments.isNotEmpty) {
       _runSubWindow(windowController.arguments);
@@ -193,8 +194,7 @@ void _runSubWindow(String argument) async {
     await _initSubWindowServices();
     initCoreLog();
 
-    // 子窗口用 window_manager 配置自身窗口属性
-    await windowManager.ensureInitialized();
+    // 子窗口自行配置窗口属性并显示（window_manager 已在 main 中初始化）
     try {
       final params = jsonDecode(argument) as Map<String, dynamic>;
       final siteId = params['siteId'] as String? ?? '';
