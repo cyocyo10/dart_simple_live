@@ -55,16 +55,14 @@ class AppNavigator {
     if (Platform.isWindows &&
         AppSettingsController.instance.desktopMultiWindow.value) {
       final controller = await WindowController.create(WindowConfiguration(
+        hiddenAtLaunch: true,
         arguments: jsonEncode({
           'siteId': site.id,
           'roomId': roomId,
         }),
       ));
-      // 等子窗口引擎启动后再配置窗口属性（参照 StarCitizenToolBox 方案）
+      // 等子窗口引擎就绪后再显示
       await Future.delayed(const Duration(milliseconds: 500));
-      await controller.setFrame(const Rect.fromLTWH(0, 0, 1280, 720));
-      await controller.setTitle('${site.name} - $roomId');
-      await controller.center();
       await controller.show();
     } else {
       Get.toNamed(RoutePath.kLiveRoomDetail, arguments: site, parameters: {
