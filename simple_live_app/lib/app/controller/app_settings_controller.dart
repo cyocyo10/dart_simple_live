@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:simple_live_app/app/constant.dart';
 import 'package:simple_live_app/app/log.dart';
 import 'package:simple_live_app/app/sites.dart';
+import 'package:simple_live_app/services/follow_sync_service.dart';
 import 'package:simple_live_app/services/local_storage_service.dart';
 
 import 'package:flutter/material.dart';
@@ -387,16 +388,19 @@ class AppSettingsController extends GetxController {
   void addShieldList(String e) {
     shieldList.add(e);
     LocalStorageService.instance.shieldBox.put(e, e);
+    FollowSyncService.syncShieldAdd(e);
   }
 
   void removeShieldList(String e) {
     shieldList.remove(e);
     LocalStorageService.instance.shieldBox.delete(e);
+    FollowSyncService.syncShieldRemove(e);
   }
 
   Future clearShieldList() async {
     shieldList.clear();
     await LocalStorageService.instance.shieldBox.clear();
+    FollowSyncService.syncShieldClear();
   }
 
   void setScaleMode(int value) {

@@ -18,6 +18,7 @@ import 'package:simple_live_app/models/db/follow_user.dart';
 import 'package:simple_live_app/models/db/follow_user_tag.dart';
 import 'package:simple_live_app/services/db_service.dart';
 import 'package:simple_live_app/services/follow_sync_service.dart';
+import 'package:simple_live_app/services/local_storage_service.dart';
 
 class FollowService extends GetxService {
   StreamSubscription<dynamic>? subscription;
@@ -142,19 +143,8 @@ class FollowService extends GetxService {
   }
 
   Future<void> loadData({bool updateStatus = true}) async {
-    // 先应用子窗口的关注同步事件
-    await FollowSyncService.applySyncEvents(
-      onAdd: (user) async {
-        if (!DBService.instance.getFollowExist(user.id)) {
-          await DBService.instance.addFollow(user);
-        }
-      },
-      onRemove: (id) async {
-        if (DBService.instance.getFollowExist(id)) {
-          DBService.instance.deleteFollow(id);
-        }
-      },
-    );
+    // 先应用子窗口的所有同步事件
+    await _applySubWindowSync();
 
     var list = DBService.instance.getFollowList();
     getAllTagList();
@@ -167,6 +157,56 @@ class FollowService extends GetxService {
     if (updateStatus) {
       startUpdateStatus();
     }
+  }
+
+  /// 应用子窗口同步事件（关注 + 历史 + 屏蔽词 + 设置）
+  Future<void> _applySubWindowSync() async {
+    // 关注同步
+    await FollowSyncService.applyFollowEvents(
+      onAdd: (user) async {
+        if (!DBService.instance.getFollowExist(user.id)) {
+          await DBService.instance.addFollow(user);
+        }
+      },
+      onRemove: (id) async {
+        if (DBService.instance.getFollowExist(id)) {
+          DBService.instance.deleteFollow(id);
+        }
+      },
+    );
+
+    // 历史记录同步
+    await FollowSyncService.applyHistoryEvents(
+      onAddOrUpdate: (history) async {
+        await DBService.instance.addOrUpdateHistory(history);
+      },
+    );
+
+    // 弹幕屏蔽词同步
+    final settings = AppSettingsController.instance;
+    await FollowSyncService.applyShieldEvents(
+      onAdd: (keyword) {
+        if (!settings.shieldList.contains(keyword)) {
+          settings.shieldList.add(keyword);
+          LocalStorageService.instance.shieldBox.put(keyword, keyword);
+        }
+      },
+      onRemove: (keyword) {
+        settings.shieldList.remove(keyword);
+        LocalStorageService.instance.shieldBox.delete(keyword);
+      },
+      onClear: () {
+        settings.shieldList.clear();
+        LocalStorageService.instance.shieldBox.clear();
+      },
+    );
+
+    // 设置同步（直接写入 Hive，不走 setValue 以避免不必要的 Log）
+    await FollowSyncService.applySettingEvents(
+      onSet: (key, value) {
+        LocalStorageService.instance.settingsBox.put(key, value);
+      },
+    );
   }
 
   /// 获取最优并发数

@@ -537,6 +537,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     );
 
     DBService.instance.addOrUpdateHistory(history);
+    FollowSyncService.syncHistory(history);
   }
 
   /// 关注用户

@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 import 'package:hive/hive.dart';
 import 'package:simple_live_app/app/log.dart';
+import 'package:simple_live_app/services/follow_sync_service.dart';
 
 class LocalStorageService extends GetxService {
   static LocalStorageService get instance => Get.find<LocalStorageService>();
@@ -199,7 +200,8 @@ class LocalStorageService extends GetxService {
 
   Future setValue<T>(dynamic key, T value) async {
     Log.d("Set LocalStorage：$key\r\n$value");
-    return await settingsBox.put(key, value);
+    await settingsBox.put(key, value);
+    FollowSyncService.syncSetting(key.toString(), value);
   }
 
   Future removeValue<T>(dynamic key) async {
