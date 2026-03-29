@@ -56,9 +56,11 @@ class AppNavigator {
       // 多进程方案：启动独立进程作为子窗口，
       // 避免 MediaKitVideoPlugin static 单例在同进程多引擎下冲突
       // (media-kit/media-kit#1341)
+      // 必须用 detached 模式，否则子进程 stdout 管道缓冲区满后会卡死
       Process.start(
         Platform.resolvedExecutable,
         ['--sub-window', jsonEncode({'siteId': site.id, 'roomId': roomId})],
+        mode: ProcessStartMode.detached,
       );
     } else {
       Get.toNamed(RoutePath.kLiveRoomDetail, arguments: site, parameters: {

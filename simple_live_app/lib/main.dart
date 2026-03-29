@@ -224,7 +224,7 @@ Future<void> _copyHiveFiles(String srcDir, String destDir) async {
   if (!await dir.exists()) {
     await dir.create(recursive: true);
   }
-  for (final name in ['localstorage', 'followuser', 'followusertag']) {
+  for (final name in ['localstorage', 'followuser', 'followusertag', 'history']) {
     final srcFile = File(p.join(srcDir, '$name.hive'));
     if (await srcFile.exists()) {
       try {
