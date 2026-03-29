@@ -298,16 +298,27 @@ Widget buildFullControls(
                   const Expanded(child: Center()),
                   Visibility(
                     visible: !Platform.isAndroid && !Platform.isIOS,
-                    child: IconButton(
-                      key: volumeButtonkey,
-                      onPressed: () {
+                    child: GestureDetector(
+                      onLongPress: () {
                         controller
                             .showVolumeSlider(volumeButtonkey.currentContext!);
                       },
-                      icon: const Icon(
-                        Icons.volume_down,
-                        size: 24,
-                        color: Colors.white,
+                      child: Obx(
+                        () => IconButton(
+                          key: volumeButtonkey,
+                          onPressed: () {
+                            controller.toggleMute();
+                          },
+                          icon: Icon(
+                            AppSettingsController
+                                        .instance.playerVolume.value ==
+                                    0
+                                ? Icons.volume_off
+                                : Icons.volume_down,
+                            size: 24,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -555,17 +566,28 @@ Widget buildControls(
                 const Expanded(child: Center()),
                 Visibility(
                   visible: !Platform.isAndroid && !Platform.isIOS,
-                  child: IconButton(
-                    key: volumeButtonkey,
-                    onPressed: () {
+                  child: GestureDetector(
+                    onLongPress: () {
                       controller.showVolumeSlider(
                         volumeButtonkey.currentContext!,
                       );
                     },
-                    icon: const Icon(
-                      Icons.volume_down,
-                      size: 24,
-                      color: Colors.white,
+                    child: Obx(
+                      () => IconButton(
+                        key: volumeButtonkey,
+                        onPressed: () {
+                          controller.toggleMute();
+                        },
+                        icon: Icon(
+                          AppSettingsController
+                                      .instance.playerVolume.value ==
+                                  0
+                              ? Icons.volume_off
+                              : Icons.volume_down,
+                          size: 24,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ),
                 ),

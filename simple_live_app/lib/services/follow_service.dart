@@ -17,6 +17,7 @@ import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/models/db/follow_user.dart';
 import 'package:simple_live_app/models/db/follow_user_tag.dart';
 import 'package:simple_live_app/services/db_service.dart';
+import 'package:simple_live_app/services/follow_sync_service.dart';
 
 class FollowService extends GetxService {
   StreamSubscription<dynamic>? subscription;
@@ -141,6 +142,20 @@ class FollowService extends GetxService {
   }
 
   Future<void> loadData({bool updateStatus = true}) async {
+    // 先应用子窗口的关注同步事件
+    await FollowSyncService.applySyncEvents(
+      onAdd: (user) async {
+        if (!DBService.instance.getFollowExist(user.id)) {
+          await DBService.instance.addFollow(user);
+        }
+      },
+      onRemove: (id) async {
+        if (DBService.instance.getFollowExist(id)) {
+          DBService.instance.deleteFollow(id);
+        }
+      },
+    );
+
     var list = DBService.instance.getFollowList();
     getAllTagList();
     if (list.isEmpty) {

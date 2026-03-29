@@ -30,6 +30,7 @@ import 'package:simple_live_app/services/bilibili_account_service.dart';
 import 'package:simple_live_app/services/douyin_account_service.dart';
 import 'package:simple_live_app/services/db_service.dart';
 import 'package:simple_live_app/services/follow_service.dart';
+import 'package:simple_live_app/services/follow_sync_service.dart';
 import 'package:simple_live_app/services/local_storage_service.dart';
 import 'package:simple_live_app/services/sync_service.dart';
 import 'package:simple_live_app/widgets/status/app_loadding_widget.dart';
@@ -147,6 +148,12 @@ Future initServices() async {
 
   Get.put(FollowService());
 
+  // 设置关注同步目录（主窗口读取子窗口的同步事件）
+  if (!Platform.isAndroid && !Platform.isIOS) {
+    FollowSyncService.baseDir =
+        (await getApplicationSupportDirectory()).path;
+  }
+
   initCoreLog();
 }
 
@@ -182,6 +189,10 @@ void _runSubWindow(String argument) async {
     final subDir = p.join(baseDir, 'subwindow_$pid');
 
     await _copyHiveFiles(baseDir, subDir);
+
+    // 设置关注同步标志（子窗口写入主窗口目录）
+    FollowSyncService.isSubWindow = true;
+    FollowSyncService.baseDir = baseDir;
 
     await Hive.initFlutter(subDir);
     await _initSubWindowServices();

@@ -22,6 +22,7 @@ import 'package:simple_live_app/modules/live_room/player/player_controller.dart'
 import 'package:simple_live_app/modules/settings/danmu_settings_page.dart';
 import 'package:simple_live_app/services/db_service.dart';
 import 'package:simple_live_app/services/follow_service.dart';
+import 'package:simple_live_app/services/follow_sync_service.dart';
 import 'package:simple_live_app/widgets/desktop_refresh_button.dart';
 import 'package:simple_live_app/widgets/follow_user_item.dart';
 import 'package:simple_live_core/simple_live_core.dart';
@@ -544,16 +545,16 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
       return;
     }
     var id = "${site.id}_$roomId";
-    DBService.instance.addFollow(
-      FollowUser(
-        id: id,
-        roomId: roomId,
-        siteId: site.id,
-        userName: detail.value?.userName ?? "",
-        face: detail.value?.userAvatar ?? "",
-        addTime: DateTime.now(),
-      ),
+    var user = FollowUser(
+      id: id,
+      roomId: roomId,
+      siteId: site.id,
+      userName: detail.value?.userName ?? "",
+      face: detail.value?.userAvatar ?? "",
+      addTime: DateTime.now(),
     );
+    DBService.instance.addFollow(user);
+    FollowSyncService.syncFollow(user);
     followed.value = true;
     EventBus.instance.emit(Constant.kUpdateFollow, id);
   }
@@ -569,6 +570,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
     var id = "${site.id}_$roomId";
     DBService.instance.deleteFollow(id);
+    FollowSyncService.syncUnfollow(id);
     followed.value = false;
     EventBus.instance.emit(Constant.kUpdateFollow, id);
   }
@@ -621,6 +623,21 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         ],
       ),
     );
+  }
+
+  double _savedVolumeBeforeMute = 50.0;
+
+  void toggleMute() {
+    final currentVolume = AppSettingsController.instance.playerVolume.value;
+    if (currentVolume > 0) {
+      _savedVolumeBeforeMute = currentVolume;
+      player.setVolume(0);
+      AppSettingsController.instance.setPlayerVolume(0);
+    } else {
+      final v = _savedVolumeBeforeMute > 0 ? _savedVolumeBeforeMute : 50.0;
+      player.setVolume(v);
+      AppSettingsController.instance.setPlayerVolume(v);
+    }
   }
 
   void showVolumeSlider(BuildContext targetContext) {
