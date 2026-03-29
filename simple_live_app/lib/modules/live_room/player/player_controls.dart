@@ -609,6 +609,18 @@ Widget buildControls(
                     ),
                   ),
                 ),
+                Visibility(
+                  visible: !Platform.isAndroid && !Platform.isIOS,
+                  child: IconButton(
+                    onPressed: () {
+                      controller.enterWindowFullScreen();
+                    },
+                    icon: const Icon(
+                      Icons.crop_free,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
                 IconButton(
                   onPressed: () {
                     controller.enterFullScreen();

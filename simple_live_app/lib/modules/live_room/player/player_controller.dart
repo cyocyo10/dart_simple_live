@@ -301,6 +301,11 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     //danmakuController?.clear();
   }
 
+  /// 窗口内全屏（仅隐藏侧栏/聊天，窗口大小和状态不变）
+  void enterWindowFullScreen() {
+    fullScreenState.value = true;
+  }
+
   Size? _lastWindowSize;
   Offset? _lastWindowPosition;
 
