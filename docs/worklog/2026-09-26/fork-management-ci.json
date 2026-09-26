@@ -1,0 +1,120 @@
+[
+  {
+    "branch": "dev",
+    "run_id": 36246623278,
+    "sha": "12b2dbd1c8bcf9a65028968e8f8822064ad2c8b3",
+    "url": "https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623278",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 108416895727,
+        "name": "build-android",
+        "conclusion": "success",
+        "started_at": "2026-09-26T13:52:47Z",
+        "completed_at": "2026-09-26T13:57:50Z",
+        "html_url": "https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623278/job/108416895727",
+        "annotations": []
+      },
+      {
+        "id": 108416895795,
+        "name": "build-windows-msix",
+        "conclusion": "success",
+        "started_at": "2026-09-26T13:52:48Z",
+        "completed_at": "2026-09-26T14:01:23Z",
+        "html_url": "https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623278/job/108416895795",
+        "annotations": []
+      },
+      {
+        "id": 108416895887,
+        "name": "build-windows-portable",
+        "conclusion": "success",
+        "started_at": "2026-09-26T13:52:48Z",
+        "completed_at": "2026-09-26T14:05:12Z",
+        "html_url": "https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623278/job/108416895887",
+        "annotations": []
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 10908251277,
+        "name": "windows-portable",
+        "size_in_bytes": 37756614,
+        "expired": false,
+        "expires_at": "2026-10-10T14:05:03Z"
+      },
+      {
+        "id": 10907971019,
+        "name": "android-apk",
+        "size_in_bytes": 58253560,
+        "expired": false,
+        "expires_at": "2026-10-10T13:57:40Z"
+      },
+      {
+        "id": 10907463846,
+        "name": "windows-msix",
+        "size_in_bytes": 38857200,
+        "expired": false,
+        "expires_at": "2026-10-10T14:01:15Z"
+      }
+    ]
+  },
+  {
+    "branch": "master",
+    "run_id": 36246623305,
+    "sha": "12b2dbd1c8bcf9a65028968e8f8822064ad2c8b3",
+    "url": "https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623305",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "id": 108416895884,
+        "name": "build-android",
+        "conclusion": "success",
+        "started_at": "2026-09-26T13:52:48Z",
+        "completed_at": "2026-09-26T14:01:56Z",
+        "html_url": "https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623305/job/108416895884",
+        "annotations": []
+      },
+      {
+        "id": 108416895886,
+        "name": "build-windows-msix",
+        "conclusion": "success",
+        "started_at": "2026-09-26T13:52:47Z",
+        "completed_at": "2026-09-26T14:04:38Z",
+        "html_url": "https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623305/job/108416895886",
+        "annotations": []
+      },
+      {
+        "id": 108416895937,
+        "name": "build-windows-portable",
+        "conclusion": "success",
+        "started_at": "2026-09-26T13:52:50Z",
+        "completed_at": "2026-09-26T14:06:51Z",
+        "html_url": "https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623305/job/108416895937",
+        "annotations": []
+      }
+    ],
+    "artifacts": [
+      {
+        "id": 10908056334,
+        "name": "windows-msix",
+        "size_in_bytes": 38862429,
+        "expired": false,
+        "expires_at": "2026-10-10T14:03:52Z"
+      },
+      {
+        "id": 10908016206,
+        "name": "android-apk",
+        "size_in_bytes": 58253551,
+        "expired": false,
+        "expires_at": "2026-10-10T14:00:14Z"
+      },
+      {
+        "id": 10907811897,
+        "name": "windows-portable",
+        "size_in_bytes": 37756687,
+        "expired": false,
+        "expires_at": "2026-10-10T14:06:15Z"
+      }
+    ]
+  }
+]

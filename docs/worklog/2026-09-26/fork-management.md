@@ -31,7 +31,7 @@
 - SHA256：`b3daa5750742ea573e21fe40b786ecfe921739bd023684d3078d913c17696850`
 - `git bundle verify` 已通过；完整 bundle 的清单也加入本地 manifest.json。
 
-本次使用针对旧 origin/master SHA 的 force-with-lease 进行一次性对齐；dev 正常 fast-forward。其目的为让稳定分支采用已经归并并验收的代码历史，不把旧 fork 提交链重新合回 dev。今后按维护指南 fast-forward 晋级，不继续常态化 force push。新维护配置与已验收业务代码一同在 dev/master 执行 CI，构建结果另行补充。
+本次使用针对旧 origin/master SHA 的 force-with-lease 进行一次性对齐；dev 正常 fast-forward。其目的为让稳定分支采用已经归并并验收的代码历史，不把旧 fork 提交链重新合回 dev。今后按维护指南 fast-forward 晋级，不继续常态化 force push。新维护配置与已验收业务代码一同在 dev/master 执行 CI，最终构建结果见下节。
 
 恢复旧内容时先查看/建立临时分支，不直接覆盖当前 master：
 
@@ -46,3 +46,20 @@ git fetch .local-archive/2026-09-26/dart-master-before-layout.bundle refs/archiv
 - 使用配置角色 explorer（Luna High）和 sol_complex（Sol High）；工具未返回可独立验证的实际运行模型、effort 或 token 用量，这些字段记为未知，不把角色声明当成运行遥测。
 - 子代理完成 18 项 Python 测试与 actionlint 1.7.12 校验；主会话对整合结果再次做必要验证并检查 GitHub 实际运行。没有为纯文档修改重复创建应用业务测试。
 - 标签创建草稿路径未通过真实新 tag 发布演练，避免为测试创建伪版本；守卫、产物收集和校验和由脚本测试覆盖。Windows 真人登录、DPI、流畅度仍沿用迁移说明中的人工验收限制。
+
+## 最终集成结果
+
+实现提交：`12b2dbd1c8bcf9a65028968e8f8822064ad2c8b3`。dev 与 master 已同时推进到这份维护配置；默认分支仍为 master。最后的记录提交只更新 AGENTS 的命令说明、维护指南和本节证据，不改变应用、版本、工具脚本或工作流；使用 `[skip ci]` 避免为相同构建输入重复编译。
+
+| 分支 | 构建 | Android | Windows portable | Windows MSIX | Actions 注解 |
+| --- | --- | --- | --- | --- | --- |
+| dev | [36246623278](https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623278) | success | success | success | 0 |
+| master | [36246623305](https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623305) | success | success | success | 0 |
+
+master 的下载项：[便携版](https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623305/artifacts/10907811897)、[MSIX](https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623305/artifacts/10908056334)、[Android](https://github.com/cyocyo10/dart_simple_live/actions/runs/36246623305/artifacts/10908016206)。Artifacts 保留 14 天，完整 ID、源码 SHA、大小、到期时间和任务信息保存在 [fork-management-ci.json](fork-management-ci.json)。
+
+Windows 实际执行：18 项维护工具测试；91 项 Flutter 测试；11 项核心离线测试；三个进程 75 次存储写入及轮询、日志、迁移验证；19 项登录与 29 项链接解析检查；便携启动器原生测试均通过。应用分析仍有 42 条 info，零 error / warning；Actions 注解为零不代表源码已经没有 info。
+
+最终审查给发布命令补上了明确的 `--repo "$GITHUB_REPOSITORY"`，避免 gh 在 fork 中选择原作者仓库。本地版本、工作流语法、文档链接和六份原样归档均核对通过；应用目录及 LICENSE 与 `e022d01` 完全一致。正式草稿路径只经过脚本测试与语法验证，未创建真实标签演练；当前没有公开 Release。
+
+原始 dev/master portable 日志保存在私有归档 `raw-work-records/fork-layout-{dev,master}-portable.log`。本次隔离实现 worktree 已在提交整合且确认干净后移除；未删除其他既有工作目录或 Pure 参考 checkout。

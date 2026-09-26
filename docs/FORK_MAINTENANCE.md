@@ -24,7 +24,22 @@ git remote set-url --push upstream disabled://upstream-read-only
 gh repo set-default cyocyo10/dart_simple_live
 ```
 
-这些是本机配置，不随 clone 复制，也不是服务端权限隔离。GitHub 命令仍建议显式带 `-R cyocyo10/dart_simple_live`；不要以 CLI 自动猜测结果作为目标仓库的依据。
+这些是本机配置，不随 clone 复制，也不是服务端权限隔离。GitHub 命令仍要明确目标仓库：多数子命令可用 `-R cyocyo10/dart_simple_live`，`gh repo view/edit` 则直接传仓库名。不要以 CLI 自动猜测结果作为目标仓库的依据。
+
+## 其他电脑上的旧 clone
+
+本次一次性重排历史后，旧 clone 不宜直接 pull/merge 旧 dev 或 master 来“消除分叉”。先保存未提交文件，再检查旧分支是否含有尚未迁入的新工作；以下方式保留原分支全部提交，不做 reset。仅适用于本地 dev/master 都存在、工作区干净且归档名尚未使用的情况：
+
+```bash
+git status
+git fetch origin
+git branch -m dev archive/dev-before-layout
+git branch -m master archive/master-before-layout
+git switch -c dev --track origin/dev
+git branch --track master origin/master
+```
+
+有额外本地修改时，在归档分支与新 dev 对比后只移植缺少的修改。若已完成迁移或分支名不同，不重复机械执行这些命令。其他 worktree 正在使用相应分支时也应先检查工作目录与分支关系。
 
 ## 日常开发与 master 晋级
 
@@ -85,15 +100,17 @@ python3 tool/app_version.py
 - `dev_vX.Y.Z`：同样匹配版本，提交必须属于 dev 历史，生成预发布 **草稿**。
 - 日常 dev 包直接使用 Actions artifacts，通常不需要每次创建开发标签。
 
-在对应分支的已验收提交上创建新标签，例如未来准备发布 1.14.2 时：
+从对应分支成功的 Fork Build 复制完整源码 SHA，再在该提交创建新标签。例如未来准备发布 1.14.2 时，先把下面的 `VERIFIED_COMMIT_SHA` 替换为实际已验收 SHA：
 
 ```bash
+git switch --detach VERIFIED_COMMIT_SHA
 python3 tool/app_version.py --tag v1.14.2
 git tag -a v1.14.2 -m 'Simple Live fork 1.14.2'
 git push origin v1.14.2
+git switch dev
 ```
 
-推标签前确认实际 checkout 的提交已晋级 master。标签不得移动复用；失败时从同一个运行重试。工作流核对仓库身份、tag、版本和分支祖先，再构建全部平台；使用内置 `GITHUB_TOKEN` 创建草稿，不依赖旧的 `TOKEN` secret。草稿包含 Windows ZIP/MSIX、APK、源码提交信息和 SHA256 清单。检查变更说明、产物与人工验收后，由维护者在 Releases 公开发布。普通 push 和本轮整理不会自动创建公开 Release。
+推标签前确认实际 checkout 的提交已晋级 master。文档归档提交可能带 `[skip ci]`；发布标签应指向前述已验收源码提交，避免跳过 push 触发的发布流水线（[GitHub 说明](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs)）。标签不得移动复用；失败时从同一个运行重试。工作流核对仓库身份、tag、版本和分支祖先，再构建全部平台；使用内置 `GITHUB_TOKEN` 创建草稿，不依赖旧的 `TOKEN` secret。草稿包含 Windows ZIP/MSIX、APK、源码提交信息和 SHA256 清单。检查变更说明、产物与人工验收后，由维护者在 Releases 公开发布。普通 push 和本轮整理不会自动创建公开 Release。
 
 ## 按需借鉴上游
 

@@ -28,7 +28,7 @@
 
 ## 分支、版本与发布
 
-- `origin` 是自己的 fork，`upstream` 只用于读取原作者更新。操作 GitHub 前核对仓库身份，命令显式指定 `-R cyocyo10/dart_simple_live`；本机配置的 `git gh` 会使用仓库代理。
+- `origin` 是自己的 fork，`upstream` 只用于读取原作者更新。操作 GitHub 前核对仓库身份，显式指定本仓库（多数子命令用 `-R cyocyo10/dart_simple_live`，repo 子命令直接传仓库名）；本机配置的 `git gh` 会使用仓库代理。
 - 日常工作落在 `dev` 或短期分支；验收后以 fast-forward 将 `dev` 推进到 `master`。`master` 是默认分支。不要常态化重写共享历史，也不要把旧 master 的历史重新合回已整理的 dev。
 - 上游修复在 `sync/upstream-*` 中检查后按需 `cherry-pick -x`；整批 merge 应有明确需要和差异审查。保留原作者提交、LICENSE 和出处，不自动同步、不向上游推送或发送消息。
 - 应用版本由 `python3 tool/app_version.py --set X.Y.Z+BUILD` 同步；实际产品变更递增构建号并更新 `CHANGELOG.md`。仅文档/CI/维护规则变更可保持应用版本。TV/core 版本独立。
