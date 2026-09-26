@@ -1,6 +1,7 @@
 # 工作记录索引
 
 - [2026-09-26：历轮 fork 改动整合、AllLive 迁移、验证及归档](2026-09-26/README.md)
+- [2026-09-26：独立维护、dev/master、构建入口与 Astra 项目规范](2026-09-26/fork-management.md)
 - [AllLive 迁移说明](../ALLLIVE_MIGRATION.md)
 - [Fork 维护与版本管理](../FORK_MAINTENANCE.md)
 

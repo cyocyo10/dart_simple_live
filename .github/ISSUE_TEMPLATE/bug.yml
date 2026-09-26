@@ -1,7 +1,6 @@
 name: BUG报告
 title: "[BUG] 请填写简短易读的标题"
-description: "使用过程中遇到了BUG"
-assignees: xiaoyaocz
+description: "报告 cyocyo10 维护版的问题"
 labels:
   - "bug"
 body:
@@ -45,16 +44,16 @@ body:
     id: logs
     attributes:
       label: 日志
-      description: 请上传日志文件
+      description: 请导出并检查脱敏诊断；不要上传 Cookie、token、密码或账号数据库
       placeholder: |
-        可以在[其他设置]-[开启日志记录]后获取日志文件
+        可以在[其他设置]中导出诊断；必要时开启详细日志后复现
  
   - type: input
     id: version
     attributes:
       label: 版本号
       description: 请填写你使用的APP版本号
-      placeholder: ex. 1.0.1
+      placeholder: ex. 1.14.1+11402；Actions 构建请附运行链接或提交 SHA
     validations:
       required: true
  
@@ -67,8 +66,10 @@ body:
       description: 使用的是什么版本，从哪里下载的
       options:
         - 正式版(Releases)
-        - 开发版(Actions)
-      default: 0
+        - master 构建(Actions)
+        - dev 构建(Actions)
+        - 自行构建
+      default: 1
 
   - type: dropdown
     id: platform

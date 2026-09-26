@@ -1,0 +1,81 @@
+name: Fork Release Draft
+run-name: Fork Release Draft · ${{ github.ref_name }} · ${{ github.sha }}
+
+on:
+  push:
+    tags: ['v*', 'dev_v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-release:
+    runs-on: ubuntu-24.04
+    outputs:
+      channel: ${{ steps.policy.outputs.channel }}
+      version: ${{ steps.policy.outputs.version }}
+      tag: ${{ steps.policy.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Refresh fork channel refs
+        run: git fetch --no-tags origin +refs/heads/dev:refs/remotes/origin/dev +refs/heads/master:refs/remotes/origin/master
+      - name: Test release policy
+        run: python -m unittest discover -s tool/tests -v
+      - name: Validate release identity, version and ancestry
+        id: policy
+        run: python tool/release_policy.py
+
+  build:
+    needs: validate-release
+    uses: ./.github/workflows/ci.yaml
+    secrets: inherit
+
+  create-draft:
+    needs: [validate-release, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download signed Android APKs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-apk
+          path: artifacts/android-apk
+      - name: Download Windows portable
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-portable
+          path: artifacts/windows-portable
+      - name: Download Windows installer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-msix
+          path: artifacts/windows-msix
+      - name: Generate release metadata and checksums
+        env:
+          APP_VERSION: ${{ needs.validate-release.outputs.version }}
+          CHANNEL: ${{ needs.validate-release.outputs.channel }}
+        run: |
+          python tool/release_assets.py --artifacts artifacts --output release-assets \
+            --repository "$GITHUB_REPOSITORY" --sha "$GITHUB_SHA" --tag "$GITHUB_REF_NAME" \
+            --version "$APP_VERSION" --channel "$CHANNEL" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ needs.validate-release.outputs.channel }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft > existing-release.json 2>/dev/null && {
+            echo 'A release already exists for this tag. Refusing to replace it.' >&2
+            exit 1
+          }
+          args=(--draft --verify-tag --title "Simple Live $GITHUB_REF_NAME" --notes-file release-assets/BUILD_INFO.json)
+          if [[ "$CHANNEL" == dev ]]; then args+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "${args[@]}" release-assets/*

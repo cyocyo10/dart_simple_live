@@ -1,75 +1,120 @@
-# Fork 维护建议与构建环境
+# 独立维护与发布
 
-本文件记录当前状态和建议，不代表已经更改 GitHub 默认分支、分支保护、发布渠道或自动同步设置。
+本仓库是 [cyocyo10/dart_simple_live](https://github.com/cyocyo10/dart_simple_live)。独立维护 AllLive 风格的 Dart 客户端；原项目 [xiaoyaocz/dart_simple_live](https://github.com/xiaoyaocz/dart_simple_live) 作为上游来源，保留作者历史、版权与 `LICENSE`。GitHub 的 fork 关系保留，不代表需要跟随上游的版本、默认分支或发布节奏。
 
-## 来源与定位
+## 分支与仓库边界
 
-- 原项目：[xiaoyaocz/dart_simple_live](https://github.com/xiaoyaocz/dart_simple_live)。
-- 本 fork：[cyocyo10/dart_simple_live](https://github.com/cyocyo10/dart_simple_live)。
-- `origin` 指向本 fork，`upstream` 指向原项目，两个 remote 已配置。
-- 当前方向：在 Dart 中保留 AllLive 的桌面体验，重点维护 Windows，同时验证 Android；其他客户端保留，但独立验证情况应单独说明。
-- 保留仓库的 `LICENSE`、原作者版权及引用说明。复制其他项目的实现时记录源项目、源文件、提交与许可证；参考交互设计也应在说明中注明来源。
-- README 建议明确标注“基于原项目的个人维护 fork”，分别链接原作者和本 fork 的问题反馈入口，列出新增功能与维护范围。现有“不提供 Release 安装包”的文案需要与自己的分发方式分别说明：CI Artifacts 是临时构建产物，正式 Release 是另一个渠道。
+| 名称 | 职责 | 更新方式 |
+| --- | --- | --- |
+| `origin/dev` | 本 fork 日常集成 | 小提交/短期分支合入，自动构建 |
+| `origin/master` | 本 fork 稳定基线，默认分支 | 验收后从 dev fast-forward 晋级，自动构建 |
+| `upstream/*` | 原作者的只读参考 | 手动 fetch，按需选择补丁 |
+| `feat/*`、`fix/*`、`sync/upstream-*` | 临时实现或引入补丁 | 完成后合入 dev，清理自己的临时分支 |
 
-## 分支与上游更新
+2026-09-26 先将历轮 56 条 fork 提交整合为 `e022d01`，保留两个已经合入的上游父提交 `fcadd05`、`ef4cfc0`。旧的本地 master `59d0676` 与远端 master `018a453` 已分叉，不能直接合并回来，否则会重新带入已整理的旧提交链。本次整理完整备份两个旧 tip 后，将 master 一次性对齐已验证的迁移基线；此后恢复正常 fast-forward。旧虎牙请求模型及 `getCdnTokenInfoEx` 链路已保留，原始 master 仍可从备份恢复。详情见[分支整理记录](worklog/2026-09-26/fork-management.md)。
 
-目前新迁移在 `dev`，GitHub 默认分支仍为 `master`。本地 `master` 保留旧提交 `59d0676`，远端 `origin/master` 为 `018a453`，两者已经分叉；调整稳定分支前先核对双方修改，不能直接重置覆盖。2026-09-26 按维护者要求仅整理当前维护的 `dev`：将历轮 56 条 fork 提交合并为一条，保留两条已合入的上游祖先线。详情见[工作记录](worklog/2026-09-26/README.md)。
+这里的稳定基线表示已完成对应自动验证；Windows 真人登录、DPI 与流畅度的验收状态需另行记录。不得将 master 上的任何提交都自动宣传成已正式发布。
 
-建议保留简单分工：
+本机已配置 `origin` 默认推送、GitHub CLI 默认仓库为自己的 fork，并为 `upstream` 设置不可用的 push URL，减少误推。新机器可在确认 remote 后设置：
 
-- `dev`：日常集成，CI 必须通过。
-- `master`：已经验收、准备发布的稳定代码。
-- `feat/*`、`fix/*`、`sync/upstream-*`：短期分支，完成后合入并清理。
+```bash
+git remote -v
+git config --local remote.pushDefault origin
+git remote set-url --push upstream disabled://upstream-read-only
+gh repo set-default cyocyo10/dart_simple_live
+```
 
-每月或遇到平台接口失效时检查上游。先检查工作区干净，再在专用分支尝试合并：
+这些是本机配置，不随 clone 复制，也不是服务端权限隔离。GitHub 命令仍建议显式带 `-R cyocyo10/dart_simple_live`；不要以 CLI 自动猜测结果作为目标仓库的依据。
+
+## 日常开发与 master 晋级
+
+在 dev 或自己的短期分支开发，提交与推送后检查对应 SHA 的 **Fork Build**。分支构建、手动构建和标签构建复用同一套 Android / Windows 步骤。
+
+```bash
+git fetch origin
+git switch dev
+git pull --ff-only origin dev
+# 完成修改、相关验证与提交
+git push origin dev
+```
+
+准备晋级时，先确认目标 dev 提交的 CI 成功，并完成此次行为变更所需的人工验收。在干净工作区执行：
+
+```bash
+git fetch origin
+git switch master
+git pull --ff-only origin master
+git merge --ff-only origin/dev
+git push origin master
+git switch dev
+```
+
+如果 fast-forward 被拒绝，先检查分叉原因；不要直接加 `--force`。hotfix 最好从 dev 实现并晋级；确需从 master 紧急修复时，修复完成立即把 master 合回 dev，再恢复上述流程。原作者的分支不会参与这个晋级步骤。
+
+## 构建与下载
+
+活动工作流只有两个：
+
+| 工作流 | 触发 | 结果 |
+| --- | --- | --- |
+| **Fork Build** / `ci.yaml` | dev/master push、PR，或 Run workflow 选择分支 | `android-apk`、`windows-portable`、`windows-msix` |
+| **Fork Release Draft** / `fork-release.yml` | `vX.Y.Z`、`dev_vX.Y.Z` 标签 | 校验来源和版本，复用构建，生成带清单和校验和的 Release 草稿 |
+
+查看 [master 构建](https://github.com/cyocyo10/dart_simple_live/actions/workflows/ci.yaml?query=branch%3Amaster) 或 [dev 构建](https://github.com/cyocyo10/dart_simple_live/actions/workflows/ci.yaml?query=branch%3Adev)。两种 Windows 包使用独立任务，一种失败不取消另一种；整体成功要求三个构建均通过。公共 Flutter/存储/迁移检查在 portable 任务中运行。
+
+Android 的分支和标签构建需要 `KEYSTORE_BASE64`、`STORE_PASSWORD`、`KEY_PASSWORD`、`KEY_ALIAS` 四项仓库 secrets；PR 不加载签名密钥，产物明确标记为 unsigned，不能当作正式升级包。现有安装标识和签名身份不因分支整理而更改。
+
+六份继承的全平台/TV 工作流移到 [参考目录](reference/workflows/README.md)，保留完整内容但不被 Actions 触发。macOS、Linux、iOS 和 TV 源码仍保留；未来验证后再将其接入自己的统一构建。TV 版本与更新入口仍是历史实现，未纳入本 fork 当前正式发布范围。
+
+Action 固定完整 SHA；Android 使用 Ubuntu 24.04，Flutter 使用 3.38.x。升级 action 时核对上游官方版本和对应 SHA。当前 app 未跟踪 `pubspec.lock`；必须在标准 Flutter 环境解析并检查后再决定纳入，不能把本机特殊 SDK 的临时解析/覆盖结果提交。既有成功构建证明当时解析可用，不等同于所有依赖已经完全锁定。
+
+## 自己的版本和 Release
+
+版本沿用本 fork 的 `1.14.x` 系列，与原作者 `1.11.x` 的节奏无关，不按上游版本自动覆盖。`simple_live_app/pubspec.yaml` 是主应用版本来源；`assets/app_version.json` 保持一致，下载地址指向本 fork。当前主应用并未消费这份旧 JSON，修改它本身不会形成线上更新发布。
+
+产品变更用脚本同步版本、递增 BUILD，填写 `CHANGELOG.md`：
+
+```bash
+python3 tool/app_version.py --set 1.14.2+11403
+python3 tool/app_version.py
+```
+
+仅文档、构建编排和维护规则的修改不改变应用版本。Windows 版本字段限制由脚本检查；MSIX 的映射须以实际包 manifest 为准，不假定构建号一定进入其第四段。
+
+- `vX.Y.Z`：源码版本必须为 X.Y.Z，提交必须属于 master 历史，生成正式版本的 **草稿**。
+- `dev_vX.Y.Z`：同样匹配版本，提交必须属于 dev 历史，生成预发布 **草稿**。
+- 日常 dev 包直接使用 Actions artifacts，通常不需要每次创建开发标签。
+
+在对应分支的已验收提交上创建新标签，例如未来准备发布 1.14.2 时：
+
+```bash
+python3 tool/app_version.py --tag v1.14.2
+git tag -a v1.14.2 -m 'Simple Live fork 1.14.2'
+git push origin v1.14.2
+```
+
+推标签前确认实际 checkout 的提交已晋级 master。标签不得移动复用；失败时从同一个运行重试。工作流核对仓库身份、tag、版本和分支祖先，再构建全部平台；使用内置 `GITHUB_TOKEN` 创建草稿，不依赖旧的 `TOKEN` secret。草稿包含 Windows ZIP/MSIX、APK、源码提交信息和 SHA256 清单。检查变更说明、产物与人工验收后，由维护者在 Releases 公开发布。普通 push 和本轮整理不会自动创建公开 Release。
+
+## 按需借鉴上游
+
+先在专用分支检查变化，再选择需要的修复：
 
 ```bash
 git fetch upstream
 git switch -c sync/upstream-YYYYMMDD dev
-git log --oneline --left-right dev...upstream/master
-git merge --no-commit --no-ff upstream/master
+git log --oneline --left-right dev...upstream/dev
+# 阅读目标提交和涉及的本地差异后，仅移植需要的提交
+git cherry-pick -x <upstream-commit>
 ```
 
-解决冲突、检查差异并运行验证后再提交、合入 `dev`。只需要某个修复时可以在专用分支使用 `git cherry-pick -x <commit>`，保留源提交出处；整个分支合并与挑选提交应按实际差异选择，不同时机械执行。不要把“同步 fork”理解为强制让自己的开发分支等于上游。
+冲突按本 fork 的产品行为解决；验证后合入 dev。只有明确需要整批更新时才 merge 上游，先审查对共享存储、多窗口、登录和本地插件补丁的影响。不要直接点击让自己分支等于上游的覆盖操作。来源记录至少包括原仓库、提交/文件、原因和本地验证；可通用的 bug 修复保持小提交，是否向原作者提交 PR 由维护者决定。
 
-通用的平台解析、重连、播放器 bug 可以整理成独立小提交，便于向上游贡献；AllLive 风格的字体预设、窗口交互等应与通用修复分开。提交或联系原作者需由维护者决定。
+AllLive 已通过远端和私有完整 bundle 保存，本机旧工作目录已清理。Pure 保留为参考，目前仍是完整 checkout；如需进一步节省空间，可保留固定提交的源码压缩包、来源 SHA 与许可证，再删除可重新 clone 的 Git 历史。不要将参考仓库整体复制进本项目的 Git 历史。
 
-## 便于长期维护的最小文档
+## 网络与工作记录
 
-建议逐步补齐，避免一次重排整个项目：
+本机直连 GitHub 曾超时，已按维护者授权配置仓库级 `http.https://github.com/.proxy=http://127.0.0.1:7890`，并将 GitHub SSH URL 映射到 HTTPS。Git 正常使用 `git fetch/push`；CLI 使用 `git gh ... -R cyocyo10/dart_simple_live`，别名从仓库配置读取代理。这不影响应用自己的直播网络，也不把本机代理写入 CI。
 
-- 根 README：fork 定位、上游来源、实际支持平台、下载与反馈入口。
-- CHANGELOG：每个发布版本的变化、迁移提示和已知问题。
-- CONTRIBUTING：本地环境、构建/测试命令、小范围提交和 PR 约定。
-- 架构说明：`simple_live_core` 平台协议；app 服务层负责存储、同步、账号；页面只负责交互；桌面窗口与原生封装单独维护。
-- AllLive 功能对照表：区分“已实现”“自动验证通过”“Windows 人工验收通过”。已有迁移说明见 [ALLLIVE_MIGRATION.md](ALLLIVE_MIGRATION.md)。
-- 上游补丁记录：源版本、修改原因、回归测试、何时移除本地覆盖。`plugins/canvas_danmaku/PATCHES.md` 已采用这种方式，其他本地依赖也宜统一。
+公开结论与复现步骤放在 `docs/worklog/`。完整历史备份、原始执行日志及私有配置位于 `.local-archive/2026-09-26/`，通过本机 `.git/info/exclude` 排除；不要上传整个目录。清理构建保留当前可用包和必要记录。
 
-## 当前 Actions 升级
-
-2026-09-26 已核对并在 7 份工作流中统一固定具体提交：
-
-| Action | 版本 | 运行方式 |
-| --- | --- | --- |
-| actions/checkout | v7.0.1 | Node 24 |
-| actions/setup-java | v6.0.1 | Node 24 |
-| actions/upload-artifact | v7.0.1 | Node 24 |
-| softprops/action-gh-release | v3.0.3 | Node 24 |
-| subosito/flutter-action | v2 对应提交 `1a449444c387b1966244ae4d4f8c696479add0b2` | composite，内部使用 cache v5 |
-
-`uses` 固定完整 SHA，旁边保留版本注释。后续升级应一起更新 SHA、版本注释和验证记录。旧的 `juliangruber/read-file-action` 已用读取 JSON 的 Python 步骤代替，保留 `content` 输出契约。
-
-CI Android runner 固定为 `ubuntu-24.04`，避免 `ubuntu-latest` 自动迁移；原本固定的 Linux 发布环境 `ubuntu-22.04` 保持现状。移除了临时 `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24`，改用原生支持 Node 24 的 Action。
-
-依据：[Node 20 退役公告](https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/)、[Ubuntu latest 迁移公告](https://github.com/actions/runner-images/issues/14748)。普通 `dev` push 只触发 CI；此次修改不会自行创建 tag 或发布 Release。未触发的 macOS、Linux、iOS、TV 发布链路不能算作已经完成运行验证。
-
-## 发布与复现建议
-
-- 后续把 Flutter 版本、应用依赖锁文件、Git 依赖提交一起纳入可复现构建策略。当前 app 忽略 `pubspec.lock`，本地曾使用特殊 SDK 环境解析依赖；应在正式 Flutter 环境重新生成并检查锁文件，再决定跟踪，不直接提交临时解析结果。
-- 为自己的 fork 制定明确的版本号和构建号，并在下载页写明它与上游版本的关系。
-- 主应用版本统一维护在 `simple_live_app/pubspec.yaml`，使用 `python3 tool/app_version.py --set 1.14.2+11403` 同步旧版 JSON 元数据，然后填写根 `CHANGELOG.md`。构建号必须递增；TV 与 core 的版本独立维护。
-- 运行 `python3 tool/app_version.py` 检查一致性。主应用 CI 和发布工作流已加入此检查，`vX.Y.Z` / `dev_vX.Y.Z` 标签必须与应用版本一致。主应用工作流已移除硬编码分支，构建触发事件对应的提交；手动运行时以界面所选分支为准。
-- 正式版本只从已验收提交创建 tag。旧 `assets/app_version.json` 当前未被主应用读取；保留并同步它，但它本身不证明已发布 Release。
-- PR/提交执行分析、回归测试；正式版本增加 Windows 多窗口、登录、字体/DPI 和数据迁移人工验收。
-- 更新依赖、合并上游、做功能迁移尽量分批提交，避免失败后难以定位。可后续启用 Dependabot 的 Actions 更新 PR，先人工审核，不自动合入。
-- Release 附变更说明、校验和及对应源码/构建信息。保留可回退版本和用户数据兼容说明；普通运行日志不包含登录凭据。
+项目 [AGENTS.md](../AGENTS.md) 按 Astra 主会话组织，保留用户指定的 Luna/Sol 执行角色和单写入者约束。它是项目指引，不修改客户端模型配置。编写依据是 OpenAI 的 [AGENTS.md 加载说明](https://learn.chatgpt.com/docs/agent-configuration/agents-md) 与 [Astra 指令整理建议](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)：把必需边界写清，按任务读取文档，避免重复铺陈和无关检查。

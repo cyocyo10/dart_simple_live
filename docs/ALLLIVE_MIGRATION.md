@@ -1,6 +1,6 @@
 # AllLive → Dart 桌面迁移
 
-本轮以 AllLive 现有 Windows 使用方式为基线：独立直播窗口、窗口各自播放和切换模式，共享收藏、历史、账号与设置。Pure 仅作参考。修改集中在 Dart；AllLive 原版保留作为对照。
+本轮以 AllLive 现有 Windows 使用方式为基线：独立直播窗口、窗口各自播放和切换模式，共享收藏、历史、账号与设置。Pure 仅作参考。修改集中在 Dart；AllLive 原版已保存在远端和本机私有 bundle，原工作目录已按维护者要求清理，恢复信息见工作档案。
 
 ## 已接入
 
@@ -52,14 +52,14 @@ flutter build windows --release
 
 输出：`simple_live_app/build/dist/windows-portable/SimpleLive-<版本号+构建号>-Windows-Portable.zip`。启动器测试覆盖 Unicode 路径/参数、工作目录、子进程和退出码。
 
-CI 及 dev/master/release 发布工作流将 Windows 拆成两个独立任务，可在 Actions 中分别查看状态和重跑失败任务：
+统一的 Fork Build（dev/master/标签复用）将 Windows 拆成两个独立任务，可在 Actions 中分别查看状态和重跑失败任务：
 
 | 任务 | Actions 下载项 | 内容 |
 | --- | --- | --- |
 | `build-windows-portable` | `windows-portable` | 无需安装的 `SimpleLive-<版本号+构建号>-Windows-Portable.zip` |
 | `build-windows-msix` | `windows-msix` | MSIX 安装包 |
 
-便携版直接执行 `flutter build windows --release`，再封装和测试启动器；MSIX 独立使用 `flutter_distributor` 打包。两者分别编译，任一任务失败不会取消另一个任务或阻止其上传产物。CI 的公共分析与回归检查由 portable 任务执行，整体 CI 成功仍要求所有任务通过。正式标签发布时，两种文件分别上传到同一版本的 Release。
+便携版直接执行 `flutter build windows --release`，再封装和测试启动器；MSIX 独立使用 `flutter_distributor` 打包。两者分别编译，任一任务失败不会取消另一个任务或阻止其上传产物。CI 的公共分析与回归检查由 portable 任务执行，整体 CI 成功仍要求所有任务通过。标签构建全部成功后，两种文件上传到同一版本的 Release 草稿；由维护者决定公开发布。
 
 “其他设置”支持查看日志、打开目录、导出诊断 ZIP、安全清理。默认保留警告/错误，可开启详细调试日志后复现问题。日志按进程/会话区分，每份约 2 MB、每会话最多 5 段，按 14 天/50 MB 清理已结束会话；仍运行的窗口受文件锁保护。导出包只包含脱敏日志和运行信息，不包含收藏或账号配置文件。
 
@@ -91,6 +91,6 @@ simple_live_core: dart test test/migration_core_offline_test.dart
 
 本次环境是 Linux。Windows 安装包原生构建已由 GitHub Windows runner 验证；WebView 真人登录、真实平台播放、关闭手感和字体视觉对照仍需 Windows 人工验收，不能由离线测试替代。验收建议：同时打开三个直播间及两个相同房间，独立切换画质/线路/音量；普通、小窗、窗口铺满、系统全屏往返；关闭主窗口继续收藏，重启后核对；跨窗口改变字号/字体/屏蔽词和账号；在 100%/125%/150% DPI 下与 AllLive 对比相同弹幕。
 
-TV/Console 的独立入口、远程同步服务器/WebDAV 的线上端到端行为没有在本轮完成独立验收。当前不能把本轮桌面实现等同于 AllLive 全平台所有需求均已验收；通过 Windows 对照后再归档旧 AllLive。
+TV/Console 的独立入口、远程同步服务器/WebDAV 的线上端到端行为没有在本轮完成独立验收。当前不能把本轮桌面实现等同于 AllLive 全平台所有需求均已验收；旧 AllLive 的远端和本地备份可用于后续对照。
 
 历轮修改、压缩前提交清单、最终成功构建、失败修复及 AllLive 本机清理记录见[工作档案](worklog/2026-09-26/README.md)。
