@@ -1,0 +1,161 @@
+## 2.4.6
+
+- Removed unsupported desktop platform declarations (`windows`, `macos`, `linux`) in pull request [#4](https://github.com/rizkyghofur/auto_orientation_v2/pull/4) and purged leftover desktop build manifests (`windows/`, `linux/`).
+- Cleaned up obsolete desktop registrar compatibility code in Dart.
+- Clarified supported platforms for iOS, Android, and Web.
+
+## 2.4.5
+
+- Fixed Swift Package Manager (SPM) integration on iOS by placing source files under `ios/auto_orientation_v2/Sources/auto_orientation_v2/` and adding `FlutterFramework` dependency in issue [#3](https://github.com/rizkyghofur/auto_orientation_v2/issues/3).
+- Updated `ios/auto_orientation_v2.podspec` source path for CocoaPods compatibility.
+- Cleaned up redundant manifests.
+
+## 2.4.4
+
+- Added `flutter_web_plugins` dependency in `pubspec.yaml` to fix web plugin compilation errors.
+
+## 2.4.3
+
+- Added dedicated Web implementation using browser `ScreenOrientation` API (`web/auto_orientation_v2_web.dart`).
+- Added native `windows/CMakeLists.txt` and `linux/CMakeLists.txt` build manifests for native desktop plugin recognition.
+
+## 2.4.2
+
+- Added Swift Package Manager (SPM) manifest for macOS at `macos/auto_orientation_v2/Package.swift`.
+- Added `macos/auto_orientation_v2.podspec` for complete macOS package compatibility.
+
+## 2.4.1
+
+- Added multi-platform declarations for `Web`, `Windows`, `macOS`, and `Linux` (20/20 platform score on pub.dev).
+- Placed Swift Package Manager (SPM) manifest in `ios/auto_orientation_v2/Package.swift` per Flutter SPM specification.
+- Migrated Android build config to Flutter built-in Kotlin support.
+
+## 2.4.0
+
+- Added Swift Package Manager (SPM) support for iOS (`Package.swift`).
+- Migrated Android native code from Java to Kotlin (`AutoOrientationPlugin.kt`).
+- Renamed Android package and namespace to `com.rizkyghofur.autoorientation`.
+- Added `AutoOrientationScope` widget for declarative orientation locking and automatic reversion on widget disposal.
+- Added orientation helper methods: `AutoOrientation.isLandscape(context)`, `AutoOrientation.isPortrait(context)`, and `AutoOrientation.currentOrientation(context)`.
+- Added Web and Desktop compatibility guards with `SystemChrome` fallback.
+- Added unit and widget tests for `AutoOrientationScope` and orientation modes.
+
+## 2.3.8
+
+- Added `AutoOrientationMode` enum for easier orientation management.
+- Added `setOrientation()` method to support enum-based API.
+- Fixed iOS bug where plugin methods always returned `notImplemented`.
+- Improved Android stability with null safety checks for Activity.
+- Improved iOS 16+ orientation handling using `windowScene.requestGeometryUpdate`.
+- Modernized example app with new API demonstration.
+- Updated minimum Dart SDK to 2.17.0 and Flutter to 3.0.0.
+
+## 2.3.7
+
+- upgraded build.gradle in pull request [#2](https://github.com/rizkyghofur/auto_orientation_v2/pull/2)
+- fixed readme
+
+## 2.3.6
+
+- fixed for No podspec found for auto_orientation_v2 in .symlinks/plugins/auto_orientation_v2/ios in issue [#1](https://github.com/rizkyghofur/auto_orientation_v2/issues/1)
+
+## 2.3.5
+
+- update CHANGELOG.md
+
+## 2.3.4
+
+- add gitignore
+
+## 2.3.3
+
+- add gitignore
+
+## 2.3.2
+
+- add setAuto ForceSensor in fullAutoMode
+- Added the namespace property in build.gradle for AGP 8
+
+## 2.3.1
+
+- Fix for iOS < 16 after rewrite in Swift.
+
+## 2.3.0
+
+- Swift Conversion of iOS plugin incl. iOS 16 Support
+
+## 2.2.2
+
+- add UIRequiresFullScreen to example plist for iPad support
+- Fix All Modes on iOS
+- replace jcenter to mavenCentral
+- Fix iOS 16 orientation
+
+## 2.2.1
+
+- Fix double rotation by removing the preferredOrientation
+- Cleaned up example app
+
+## 2.2.0
+
+- Remove Android V1 embedding
+- Upgrade example app, update Gradle dependency
+- cleanup\*
+
+## 2.1.0
+
+- Migrate to Android V2 embedding
+
+## 2.0.2
+
+- Fixes hanging on `await` calls
+
+## 2.0.1
+
+- Added SCREEN_ORIENTATION_USER and updated Library Versions.
+
+## 2.0.0
+
+- Migrate to null safety
+
+## 1.0.7
+
+- Use sensor rotation
+
+## 1.0.6
+
+- Revert flutter dependency version
+
+## 1.0.5
+
+- Revert flutter dependency version
+
+## 1.0.4
+
+- Update flutter dependency version
+
+## 1.0.3
+
+- Format code and update dependency version pinning
+
+## 1.0.2
+
+- Fix compatibility with android
+
+## 1.0.1
+
+- Update Changelog
+
+## 1.0.0
+
+- Add more specific implementation
+- Add Android Support
+- Add Example
+
+## 0.0.2
+
+- Create github repository and link it
+
+## 0.0.1
+
+- Create the first auto rotation for iOS

@@ -1,49 +1,84 @@
+import 'dart:convert';
 import 'dart:io';
 
-import 'package:device_info_plus/device_info_plus.dart';
+import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:simple_live_app/app/utils.dart';
+import 'package:simple_live_app/app/diagnostics/diagnostic_writer.dart';
 
 class Log {
   static LogFileWriter? logFileWriter;
+  static bool detailed = !kReleaseMode;
+  static bool _shuttingDown = false;
+  static final RxList<DebugLogModel> debugLogs = <DebugLogModel>[].obs;
+
+  /// Call once after WidgetsFlutterBinding initialization, in every window.
+  static Future<void> initialize({bool detailed = false}) async {
+    _shuttingDown = false;
+    Log.detailed = detailed;
+    logFileWriter ??= LogFileWriter();
+    await logFileWriter!.flush();
+  }
+
+  /// Compatibility for callers that used this to enable detailed logging.
   static void initWriter() {
-    logFileWriter = LogFileWriter();
+    if (_shuttingDown) return;
+    detailed = true;
+    logFileWriter ??= LogFileWriter();
   }
 
-  static void disposeWriter() {
-    logFileWriter?.close();
+  static void setDetailed(bool enabled) {
+    if (_shuttingDown) return;
+    if (detailed == enabled && logFileWriter != null) return;
+    detailed = enabled;
+    logFileWriter ??= LogFileWriter();
+    writeLog('Detailed logging: $enabled', Level.warning);
+  }
+
+  static Future<void> disposeWriter() async {
+    final writer = logFileWriter;
     logFileWriter = null;
+    await writer?.close();
   }
 
-  static void writeLog(content, [Level level = Level.info]) {
-    logFileWriter
-        ?.write("[${level.name.toUpperCase()}] $_currentTime：$content");
+  static Future<void> shutdown() async {
+    _shuttingDown = true;
+    // Timeout does not cancel close; freeze every lazy writer creation path so
+    // late callbacks cannot reopen a file while the old writer drains.
+    await disposeWriter().timeout(const Duration(milliseconds: 500),
+        onTimeout: () {
+      w('日志关闭超过500ms，继续退出（用户数据已保存）', false);
+    });
   }
 
-  static RxList<DebugLogModel> debugLogs = <DebugLogModel>[].obs;
+  static void resume() => _shuttingDown = false;
+  static Future<void> flush() async => await logFileWriter?.flush();
+
+  static void writeLog(dynamic content, [Level level = Level.info]) {
+    if (_shuttingDown) return;
+    // Warnings and errors remain available in release without verbose traffic.
+    if (!detailed &&
+        level != Level.warning &&
+        level != Level.error &&
+        level != Level.fatal) return;
+    logFileWriter ??= LogFileWriter();
+    logFileWriter!.write(
+      '[${level.name.toUpperCase()}] ${DateTime.now().toIso8601String()} $content',
+    );
+  }
 
   static void addDebugLog(String content, Color? color) {
-    if (kReleaseMode) {
-      return;
-    }
-    if (content.contains("请求响应")) {
-      content = content.split("\n").join('\n💡 ');
-    }
-    try {
-      debugLogs.insert(0, DebugLogModel(DateTime.now(), content, color: color));
-    } catch (e) {
-      if (kDebugMode) {
-        print(e);
-      }
-    }
+    debugLogs.insert(
+      0,
+      DebugLogModel(DateTime.now(), redactDiagnostic(content), color: color),
+    );
+    if (debugLogs.length > 500) debugLogs.removeRange(500, debugLogs.length);
   }
 
-  static Logger logger = Logger(
+  static final Logger logger = Logger(
     printer: PrettyPrinter(
       methodCount: 0,
       errorMethodCount: 8,
@@ -55,103 +90,127 @@ class Log {
   );
 
   static void d(String message, [bool writeFile = true]) {
-    addDebugLog(message, Colors.orange);
-    logger.d("${DateTime.now().toString()}\n$message");
-    if (writeFile) {
-      writeLog(message, Level.debug);
-    }
+    if (!detailed) return;
+    final safe = redactDiagnostic(message);
+    addDebugLog(safe, Colors.orange);
+    if (kDebugMode) logger.d(safe);
+    if (writeFile) writeLog(safe, Level.debug);
   }
 
   static void i(String message, [bool writeFile = true]) {
-    addDebugLog(message, Colors.blue);
-    logger.i("${DateTime.now().toString()}\n$message");
-    if (writeFile) {
-      logFileWriter?.write("[INFO] $_currentTime：$message");
-      writeLog(message, Level.info);
-    }
+    if (!detailed) return;
+    final safe = redactDiagnostic(message);
+    addDebugLog(safe, Colors.blue);
+    if (kDebugMode) logger.i(safe);
+    if (writeFile) writeLog(safe, Level.info);
   }
 
-  static void e(String message, StackTrace stackTrace,
-      [bool writeFile = true]) {
-    addDebugLog('$message\r\n\r\n$stackTrace', Colors.red);
-    logger.e("${DateTime.now().toString()}\n$message", stackTrace: stackTrace);
-    if (writeFile) {
-      writeLog("$message\n$stackTrace", Level.error);
-    }
+  static void e(
+    Object message,
+    StackTrace stackTrace, [
+    bool writeFile = true,
+  ]) {
+    final safe = redactDiagnostic('$message\n$stackTrace');
+    addDebugLog(safe, Colors.red);
+    if (kDebugMode) logger.e(safe);
+    if (writeFile) writeLog(safe, Level.error);
   }
 
   static void w(String message, [bool writeFile = true]) {
-    addDebugLog(message, Colors.pink);
-    logger.w("${DateTime.now().toString()}\n$message");
-    if (writeFile) {
-      writeLog(message, Level.warning);
-    }
+    final safe = redactDiagnostic(message);
+    addDebugLog(safe, Colors.pink);
+    if (kDebugMode) logger.w(safe);
+    if (writeFile) writeLog(safe, Level.warning);
   }
 
   static void logPrint(dynamic obj, [bool writeFile = true]) {
-    addDebugLog(obj.toString(), Colors.red);
-    if (writeFile) {
-      writeLog(obj, Level.info);
-    }
-    //logger.e(obj.toString(), obj, obj?.stackTrace);
-    if (kDebugMode) {
-      print(obj);
+    if (obj is Error) {
+      e(obj.toString(), obj.stackTrace ?? StackTrace.current, writeFile);
+    } else if (obj is Exception) {
+      e(obj.toString(), StackTrace.current, writeFile);
+    } else {
+      i(obj.toString(), writeFile);
     }
   }
 
-  static String get _currentTime => Utils.timeFormat.format(DateTime.now());
+  static Future<Directory> logDirectory() async {
+    final support = await getApplicationSupportDirectory();
+    return Directory('${support.path}/log');
+  }
+
+  static Future<List<File>> logFiles() async {
+    if (_shuttingDown) return [];
+    logFileWriter ??= LogFileWriter();
+    await flush();
+    return logFileWriter!.writer.files();
+  }
+
+  static Future<int> cleanLogs() async {
+    await flush();
+    return await logFileWriter?.writer.clean(clearAll: true) ?? 0;
+  }
+
+  /// Exports only sanitized logs and non-identifying runtime metadata.
+  static Future<File> exportDiagnostics() async {
+    final archive = Archive();
+    archive.addFile(
+      ArchiveFile.string(
+        'diagnostics.json',
+        jsonEncode({
+          'createdUtc': DateTime.now().toUtc().toIso8601String(),
+          'platform': Platform.operatingSystem,
+          'osVersion': redactDiagnostic(Platform.operatingSystemVersion),
+          'locale': Platform.localeName,
+          'detailedLogging': detailed,
+          'writerFailure': logFileWriter?.writer.failure,
+        }),
+      ),
+    );
+    var exportedBytes = 0;
+    final files = await logFiles();
+    files.sort((a, b) => b.path.compareTo(a.path));
+    for (final file in files) {
+      try {
+        final size = await file.length();
+        if (size > 2 * 1024 * 1024 + 128000 ||
+            exportedBytes + size > 20 * 1024 * 1024) continue;
+        final content = redactDiagnostic(
+          utf8.decode(await file.readAsBytes(), allowMalformed: true),
+        );
+        exportedBytes += size;
+        archive.addFile(
+          ArchiveFile.string('logs/${file.uri.pathSegments.last}', content),
+        );
+      } on FileSystemException {
+        /* Concurrent rotation: skip the removed segment. */
+      }
+    }
+    final memory = debugLogs
+        .map((item) => '${item.datetime.toIso8601String()} ${item.content}')
+        .join('\n');
+    archive.addFile(
+      ArchiveFile.string('current-window.log', redactDiagnostic(memory)),
+    );
+    final dir = await getTemporaryDirectory();
+    final file = File(
+      '${dir.path}/simple-live-diagnostics-${DateTime.now().microsecondsSinceEpoch}.zip',
+    );
+    await file.writeAsBytes(ZipEncoder().encode(archive), flush: true);
+    return file;
+  }
 }
 
 class LogFileWriter {
-  late String fileName;
-  LogFileWriter() {
-    var dt = DateFormat("yyyy-MM-dd HH-mm-ss").format(DateTime.now());
-    fileName = "$dt.log";
-    initFile();
-  }
-  IOSink? fileWriter;
-  void initFile() async {
-    var supportDir = await getApplicationSupportDirectory();
-    var logDir = Directory("${supportDir.path}/log");
-    if (!await logDir.exists()) {
-      await logDir.create();
-    }
-    var logFile = File("${logDir.path}/$fileName");
-    fileWriter = logFile.openWrite(mode: FileMode.append);
-    writeSystemInfo();
-  }
-
-  void write(String content) {
-    fileWriter?.write(content);
-    fileWriter?.write("\r\n");
-  }
-
-  Future close() async {
-    await fileWriter?.close();
-  }
-
-  void writeSystemInfo() async {
-    DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-    write("System Info:");
-    write("Current Time: ${DateTime.now()}");
-    write("Platform: ${Platform.operatingSystem}");
-    write("Version: ${Platform.operatingSystemVersion}");
-    write("Local: ${Platform.localeName}");
+  LogFileWriter() : writer = DiagnosticWriter(Log.logDirectory()) {
     write(
-        "App Version: ${Utils.packageInfo.version}+${Utils.packageInfo.buildNumber}");
-    if (Platform.isAndroid) {
-      write((await deviceInfo.androidInfo).data.toString());
-    } else if (Platform.isIOS) {
-      write((await deviceInfo.iosInfo).data.toString());
-    } else if (Platform.isLinux) {
-      write((await deviceInfo.linuxInfo).data.toString());
-    } else if (Platform.isMacOS) {
-      write((await deviceInfo.macOsInfo).data.toString());
-    } else if (Platform.isWindows) {
-      write((await deviceInfo.windowsInfo).data.toString());
-    }
-    write("End System Info");
+      'Session: ${writer.session}; Platform: ${Platform.operatingSystem}; Locale: ${Platform.localeName}',
+    );
   }
+  final DiagnosticWriter writer;
+  String get fileName => '${writer.session}.log';
+  void write(String content) => writer.write(content);
+  Future<void> flush() => writer.flush();
+  Future<void> close() => writer.close();
 }
 
 class DebugLogModel {

@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
-import 'package:hive/hive.dart';
+import 'storage/app_box.dart';
+import 'storage/app_data_store.dart';
 import 'package:simple_live_app/app/log.dart';
 
 class LocalStorageService extends GetxService {
@@ -59,6 +60,8 @@ class LocalStorageService extends GetxService {
   /// 弹幕开启
   static const String kDanmuEnable = "DanmuEnable";
 
+  static const String kDanmuFontFamily = "DanmuFontFamily";
+
   /// 弹幕字重
   static const String kDanmuFontWeight = "DanmuFontWeight";
 
@@ -117,8 +120,14 @@ class LocalStorageService extends GetxService {
   /// 哔哩哔哩cookie
   static const String kBilibiliCookie = "BilibiliCookie";
 
+  /// 斗鱼cookie(浏览器登录斗鱼后复制，用于取流登录态，可解除匿名降档)
+  static const String kDouyuCookie = "DouyuCookie";
+
   /// 抖音cookie
   static const String kDouyinCookie = "DouyinCookie";
+
+  /// 抖音搜索专用 Cookie（登录态，隐私隔离）
+  static const String kDouyinSearchCookie = "DouyinSearchCookie";
 
   ///主题色
   static const String kStyleColor = "kStyleColor";
@@ -153,6 +162,9 @@ class LocalStorageService extends GetxService {
   /// 开启多线程更新关注
   static const String kUpdateFollowThreadCount = "UpdateFollowThreadCount";
 
+  /// 桌面端多窗口模式（仅 Windows）
+  static const String kDesktopMultiWindow = "DesktopMultiWindow";
+
   /// WebDAV_服务器地址
   static const String kWebDAVUri = "WebDAVUri";
 
@@ -168,23 +180,21 @@ class LocalStorageService extends GetxService {
   /// WebDAV_最后一次备份时间
   static const String kWebDAVLastRecoverTime = "kWebDAVLastRecoverTime";
 
-  late Box settingsBox;
-  late Box<String> shieldBox;
+  late AppBox<dynamic> settingsBox;
+  late AppBox<String> shieldBox;
 
   Future init() async {
-    settingsBox = await Hive.openBox(
-      "LocalStorage",
-    );
-    shieldBox = await Hive.openBox(
-      "DanmuShield",
-    );
+    settingsBox =
+        await AppDataStore.instance.openBox<dynamic>('LocalStorage', (v) => v);
+    shieldBox = await AppDataStore.instance
+        .openBox<String>('DanmuShield', (v) => v as String);
   }
 
   T getValue<T>(dynamic key, T defaultValue) {
     try {
-      var value = settingsBox.get(key, defaultValue: defaultValue) as T;
-      Log.d("Get LocalStorage：$key\r\n$value");
-      return value;
+      final value = settingsBox.get(key, defaultValue: defaultValue);
+      if (defaultValue is double && value is num) return value.toDouble() as T;
+      return value as T;
     } catch (e) {
       Log.logPrint(e);
       return defaultValue;
@@ -192,8 +202,8 @@ class LocalStorageService extends GetxService {
   }
 
   Future setValue<T>(dynamic key, T value) async {
-    Log.d("Set LocalStorage：$key\r\n$value");
-    return await settingsBox.put(key, value);
+    Log.d("Set LocalStorage: $key");
+    await settingsBox.put(key, value);
   }
 
   Future removeValue<T>(dynamic key) async {

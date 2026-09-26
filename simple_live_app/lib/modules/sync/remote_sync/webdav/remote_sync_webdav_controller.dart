@@ -16,12 +16,10 @@ import 'package:simple_live_app/app/log.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/app/utils/archive.dart';
 import 'package:simple_live_app/app/utils/document.dart';
-import 'package:simple_live_app/models/db/follow_user.dart';
-import 'package:simple_live_app/models/db/follow_user_tag.dart';
-import 'package:simple_live_app/models/db/history.dart';
 import 'package:simple_live_app/modules/sync/remote_sync/webdav/webdav_client.dart';
 import 'package:simple_live_app/services/bilibili_account_service.dart';
 import 'package:simple_live_app/services/db_service.dart';
+import 'package:simple_live_app/services/data_import.dart';
 import 'package:simple_live_app/services/local_storage_service.dart';
 
 class RemoteSyncWebDAVController extends BaseController {
@@ -54,15 +52,21 @@ class RemoteSyncWebDAVController extends BaseController {
   // webDAV 逻辑
   // 初始化webDAV
   void doWebDAVInit() {
-    var uri = LocalStorageService.instance
-        .getValue(LocalStorageService.kWebDAVUri, "");
+    var uri = LocalStorageService.instance.getValue(
+      LocalStorageService.kWebDAVUri,
+      "",
+    );
     if (uri.isEmpty) {
       notLogin.value = true;
     } else {
-      user.value = LocalStorageService.instance
-          .getValue(LocalStorageService.kWebDAVUser, "");
-      var password = LocalStorageService.instance
-          .getValue(LocalStorageService.kWebDAVPassword, "");
+      user.value = LocalStorageService.instance.getValue(
+        LocalStorageService.kWebDAVUser,
+        "",
+      );
+      var password = LocalStorageService.instance.getValue(
+        LocalStorageService.kWebDAVPassword,
+        "",
+      );
       davClient = DAVClient(uri, user.value, password);
       // 从未同步过默认为最新数据
       lastRecoverTime.value = Utils.parseTime(
@@ -99,19 +103,28 @@ class RemoteSyncWebDAVController extends BaseController {
 
   // WebDAV登录
   void doWebDAVLogin(
-      String webDAVUri, String webDAVUser, String webDAVPassword) async {
+    String webDAVUri,
+    String webDAVUser,
+    String webDAVPassword,
+  ) async {
     // 确认登录
     davClient = DAVClient(webDAVUri, webDAVUser, webDAVPassword);
     await checkIsLogin();
     if (!notLogin.value) {
       // 保存到本地
-      LocalStorageService.instance
-          .setValue(LocalStorageService.kWebDAVUri, webDAVUri);
-      LocalStorageService.instance
-          .setValue(LocalStorageService.kWebDAVUser, webDAVUser);
+      LocalStorageService.instance.setValue(
+        LocalStorageService.kWebDAVUri,
+        webDAVUri,
+      );
+      LocalStorageService.instance.setValue(
+        LocalStorageService.kWebDAVUser,
+        webDAVUser,
+      );
       user.value = webDAVUser;
-      LocalStorageService.instance
-          .setValue(LocalStorageService.kWebDAVPassword, webDAVPassword);
+      LocalStorageService.instance.setValue(
+        LocalStorageService.kWebDAVPassword,
+        webDAVPassword,
+      );
       Get.back();
       SmartDialog.showToast("登录成功！");
     } else {
@@ -126,10 +139,14 @@ class RemoteSyncWebDAVController extends BaseController {
     if (result) {
       // 清除本地账号数据
       LocalStorageService.instance.setValue(LocalStorageService.kWebDAVUri, "");
-      LocalStorageService.instance
-          .setValue(LocalStorageService.kWebDAVUser, "");
-      LocalStorageService.instance
-          .setValue(LocalStorageService.kWebDAVPassword, "");
+      LocalStorageService.instance.setValue(
+        LocalStorageService.kWebDAVUser,
+        "",
+      );
+      LocalStorageService.instance.setValue(
+        LocalStorageService.kWebDAVPassword,
+        "",
+      );
       notLogin.value = true;
     }
   }
@@ -146,8 +163,9 @@ class RemoteSyncWebDAVController extends BaseController {
           DateTime uploadTime = DateTime.now();
           lastUploadTime.value = Utils.parseTime(uploadTime);
           LocalStorageService.instance.setValue(
-              LocalStorageService.kWebDAVLastUploadTime,
-              uploadTime.millisecondsSinceEpoch);
+            LocalStorageService.kWebDAVLastUploadTime,
+            uploadTime.millisecondsSinceEpoch,
+          );
         } else {
           Log.e("备份失败", StackTrace.current);
           SmartDialog.showToast("上传失败");
@@ -173,7 +191,7 @@ class RemoteSyncWebDAVController extends BaseController {
       // follows
       var userFollowList = DBService.instance.getFollowList();
       var dataFollowsMap = {
-        'data': userFollowList.map((e) => e.toJson()).toList()
+        'data': userFollowList.map((e) => e.toJson()).toList(),
       };
       final userFollowJsonFile = File(join(profile.path, _userFollowJsonName));
       await userFollowJsonFile.writeAsString(jsonEncode(dataFollowsMap));
@@ -185,28 +203,33 @@ class RemoteSyncWebDAVController extends BaseController {
       // histories
       var userHistoriesList = DBService.instance.getHistores();
       var dataHistoriesMap = {
-        'data': userHistoriesList.map((e) => e.toJson()).toList()
+        'data': userHistoriesList.map((e) => e.toJson()).toList(),
       };
-      final userHistoriesJsonFile =
-          File(join(profile.path, _userHistoriesJsonName));
+      final userHistoriesJsonFile = File(
+        join(profile.path, _userHistoriesJsonName),
+      );
       await userHistoriesJsonFile.writeAsString(jsonEncode(dataHistoriesMap));
 
       // blocked_word
       var userShieldList = AppSettingsController.instance.shieldList;
       var dataShieldListMap = {'data': userShieldList.toList()};
-      final userBlockedWordJsonFile =
-          File(join(profile.path, _userBlockedWordJsonName));
-      await userBlockedWordJsonFile
-          .writeAsString(jsonEncode(dataShieldListMap));
+      final userBlockedWordJsonFile = File(
+        join(profile.path, _userBlockedWordJsonName),
+      );
+      await userBlockedWordJsonFile.writeAsString(
+        jsonEncode(dataShieldListMap),
+      );
 
       // bilibili_account
       var userBiliAccountCookieMap = {
-        'data': {'cookie': BiliBiliAccountService.instance.cookie}
+        'data': {'cookie': BiliBiliAccountService.instance.cookie},
       };
-      final bilibiliAccountJsonFile =
-          File(join(profile.path, _userBilibiliAccountJsonName));
-      await bilibiliAccountJsonFile
-          .writeAsString(jsonEncode(userBiliAccountCookieMap));
+      final bilibiliAccountJsonFile = File(
+        join(profile.path, _userBilibiliAccountJsonName),
+      );
+      await bilibiliAccountJsonFile.writeAsString(
+        jsonEncode(userBiliAccountCookieMap),
+      );
       // settings
       var settingList = LocalStorageService.instance.settingsBox.toMap();
       var dataSettingListMap = {'data': settingList};
@@ -225,112 +248,136 @@ class RemoteSyncWebDAVController extends BaseController {
     return zipBytes;
   }
 
-  // webDAV恢复到本地
-  void doWebDAVRecovery() async {
+  // Read and validate every selected file before the first write. Legacy
+  // backup files are independent boxes, so a storage failure after a commit
+  // is reported as a partial restore rather than as successful synchronization.
+  Future<void> doWebDAVRecovery() async {
     SmartDialog.showLoading(msg: "正在恢复到本地");
-    final data = await davClient.recovery();
-    final archive = await Isolate.run<Archive>(() {
-      final zipDecoder = ZipDecoder();
-      return zipDecoder.decodeBytes(data);
-    });
-    for (ArchiveFile file in archive) {
-      await _recovery(file);
-    }
-    SmartDialog.dismiss();
-    SmartDialog.showToast('同步完成');
-    DateTime recoverTime = DateTime.now();
-    lastRecoverTime.value = Utils.parseTime(recoverTime);
-    LocalStorageService.instance.setValue(
+    final completed = <String>[];
+    var writesStarted = false;
+    try {
+      final data = await davClient.recovery();
+      final archive = await Isolate.run<Archive>(() {
+        return ZipDecoder().decodeBytes(data);
+      });
+      final prepared = <String, Future<void> Function()>{};
+      for (final file in archive) {
+        final operation = _prepareRecovery(file);
+        if (operation != null) {
+          if (prepared.containsKey(file.name)) {
+            throw const FormatException('备份中有重复的数据文件');
+          }
+          prepared[file.name] = operation;
+        }
+      }
+      if (prepared.isEmpty) {
+        throw const FormatException('备份中没有选定的可恢复数据');
+      }
+      // Settings may include an account cookie. An explicitly selected account
+      // file is restored after settings so its value does not get overwritten.
+      writesStarted = true;
+      final settings = prepared.remove(_userSettingsJsonName);
+      if (settings != null) {
+        await settings();
+        completed.add(_userSettingsJsonName);
+      }
+      for (final entry in prepared.entries) {
+        await entry.value();
+        completed.add(entry.key);
+      }
+      final recoverTime = DateTime.now();
+      await LocalStorageService.instance.settingsBox.put(
         LocalStorageService.kWebDAVLastRecoverTime,
-        recoverTime.millisecondsSinceEpoch);
+        recoverTime.millisecondsSinceEpoch,
+      );
+      lastRecoverTime.value = Utils.parseTime(recoverTime);
+      SmartDialog.showToast('同步完成');
+    } catch (error, stack) {
+      Log.e('WebDAV 恢复失败（${error.runtimeType}），已提交 ${completed.length} 个数据文件',
+          stack);
+      SmartDialog.showToast(
+        !writesStarted
+            ? '恢复失败，未写入本地数据：${error is FormatException ? error.message : "请检查连接及备份文件"}'
+            : '恢复未完成，已完整写入 ${completed.length} 个数据文件，请重试',
+      );
+    } finally {
+      // A partial storage failure must still refresh the visible committed data.
+      try {
+        if (writesStarted) {
+          AppSettingsController.instance.reloadFromStorage();
+          BiliBiliAccountService.instance.reloadFromStorage();
+          EventBus.instance.emit(Constant.kUpdateFollow, 0);
+          EventBus.instance.emit(Constant.kUpdateHistory, 0);
+        }
+      } finally {
+        SmartDialog.dismiss();
+      }
+    }
   }
 
-  Future<void> _recovery(ArchiveFile file) async {
-    if (file.isFile && file.name.endsWith('.json')) {
-      var jsonString = utf8.decode(file.content);
-      var jsonData = json.decode(jsonString)['data'];
-      // 同步follows
-      if (file.name == _userFollowJsonName && isSyncFollows.value) {
-        // 当前云优先
-        try {
-          // 清空本地关注列表
-          await DBService.instance.followBox.clear();
-          for (var item in jsonData) {
-            var user = FollowUser.fromJson(item);
-            await DBService.instance.followBox.put(user.id, user);
-          }
-          Log.i('已同步关注用户列表');
-        } catch (e) {
-          Log.e('同步关注用户列表失败: $e', StackTrace.current);
-        }
-      } else if (file.name == _userHistoriesJsonName && isSyncHistories.value) {
-        try {
-          for (var item in jsonData) {
-            var history = History.fromJson(item);
-            if (DBService.instance.historyBox.containsKey(history.id)) {
-              var old = DBService.instance.historyBox.get(history.id);
-              //如果本地的更新时间比较新，就不更新
-              if (old!.updateTime.isAfter(history.updateTime)) {
-                continue;
-              }
-            }
-            await DBService.instance.addOrUpdateHistory(history);
-          }
-          Log.i('已同步用户观看历史记录');
-        } catch (e) {
-          Log.e('同步用户观看历史记录失败: $e', StackTrace.current);
-        }
-      } else if (file.name == _userBlockedWordJsonName &&
-          isSyncBlockWord.value) {
-        try {
-          for (var keyword in jsonData) {
-            AppSettingsController.instance.addShieldList(keyword.trim());
-          }
-          Log.i('已同步用户屏蔽词');
-        } catch (e) {
-          Log.e('同步用户屏蔽词失败:$e', StackTrace.current);
-        }
-      } else if (file.name == _userBilibiliAccountJsonName &&
-          isSyncBilibiliAccount.value) {
-        try {
-          var cookie = jsonData['cookie'];
-          BiliBiliAccountService.instance.setCookie(cookie);
-          BiliBiliAccountService.instance.loadUserInfo();
-          Log.i('已同步哔哩哔哩账号');
-        } catch (e) {
-          Log.e('同步哔哩哔哩账号失败：$e', StackTrace.current);
-        }
-      } else if (file.name == _userSettingsJsonName) {
-        try {
-          await LocalStorageService.instance.settingsBox.clear();
-          LocalStorageService.instance.settingsBox.putAll(jsonData);
-          Log.i('已同步用户设置');
-        } catch (e) {
-          Log.e("同步用户设置失败：$e", StackTrace.current);
-        }
-      } else if (file.name == _userTagsJsonName && isSyncFollows.value) {
-        try {
-          // 标签功能和关注具有依赖关系，必须同时同步
-          // 清空本地标签列表
-          await DBService.instance.tagBox.clear();
-          for (var item in jsonData) {
-            var tag = FollowUserTag.fromJson(item);
-            await DBService.instance.tagBox.put(tag.id, tag);
-            // 插入之后验证
-            var insertedTag = DBService.instance.tagBox.get(tag.id);
-            Log.i('Inserted tag: ${insertedTag?.tag}');
-          }
-          EventBus.instance.emit(Constant.kUpdateFollow, 0);
-          Log.i('已同步用户自定义标签');
-        } catch (e) {
-          Log.e('同步用户自定义标签失败:$e', StackTrace.current);
-        }
-      } else {
-        return;
-      }
-    } else {
-      Log.i('不是正确的文件名');
+  Future<void> Function()? _prepareRecovery(ArchiveFile file) {
+    if (!file.isFile) return null;
+    final selected = file.name == _userSettingsJsonName ||
+        (isSyncFollows.value &&
+            (file.name == _userFollowJsonName ||
+                file.name == _userTagsJsonName)) ||
+        (isSyncHistories.value && file.name == _userHistoriesJsonName) ||
+        (isSyncBlockWord.value && file.name == _userBlockedWordJsonName) ||
+        (isSyncBilibiliAccount.value &&
+            file.name == _userBilibiliAccountJsonName);
+    if (!selected) return null;
+    Object? wrapper;
+    try {
+      wrapper = jsonDecode(utf8.decode(file.content));
+    } catch (_) {
+      throw const FormatException('备份 JSON 数据格式错误');
     }
+    if (wrapper is! Map || !wrapper.containsKey('data')) {
+      throw const FormatException('备份数据格式错误');
+    }
+    final data = wrapper['data'];
+    if (file.name == _userFollowJsonName) {
+      final entries = DataImport.decodeFollowUsers(data);
+      return () => DataImport.apply(
+            DBService.instance.followBox,
+            entries,
+            overlay: true,
+          );
+    }
+    if (file.name == _userTagsJsonName) {
+      final entries = DataImport.decodeTags(data);
+      return () =>
+          DataImport.apply(DBService.instance.tagBox, entries, overlay: true);
+    }
+    if (file.name == _userHistoriesJsonName) {
+      final entries = DataImport.decodeHistory(data);
+      return () => DataImport.apply(
+            DBService.instance.historyBox,
+            entries,
+            overlay: false,
+          );
+    }
+    if (file.name == _userBlockedWordJsonName) {
+      final entries = DataImport.decodeShieldWords(data);
+      return () => DataImport.apply(
+            LocalStorageService.instance.shieldBox,
+            entries,
+            overlay: false,
+          );
+    }
+    if (file.name == _userSettingsJsonName) {
+      final entries = DataImport.decodeSettings(data);
+      return () => DataImport.apply(
+            LocalStorageService.instance.settingsBox,
+            entries,
+            overlay: true,
+          );
+    }
+    final cookie = DataImport.decodeCookie(data);
+    return () async {
+      await BiliBiliAccountService.instance.setCookie(cookie);
+      await LocalStorageService.instance.settingsBox.flush();
+    };
   }
 
   // ui控制--密码可见控制

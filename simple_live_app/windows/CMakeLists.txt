@@ -2,6 +2,13 @@
 cmake_minimum_required(VERSION 3.14)
 project(simple_live_app LANGUAGES CXX)
 
+# VS18(MSVC 14.51) 将 <experimental/coroutine> 废弃升级为编译错误(STL1011),
+# 多个 Windows 插件的 C++ 代码尚未迁移到 C++20 协程。
+# 按微软官方说明在项目根部全局压制,对所有插件 target 生效,待工具链适配后移除。
+if(MSVC)
+  add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+endif()
+
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
 set(BINARY_NAME "simple_live_app")

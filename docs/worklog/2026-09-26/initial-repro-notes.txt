@@ -1,0 +1,2 @@
+Offline audit reproduction. Production follow_sync_service.dart body unchanged; app logging/models replaced by inert stubs. Uses cached path package. No app data or network access.
+Source SHA256: 21be082f83d7bdf7abe93f6819397f5c3cdd40de6d6ea3421a79293e31578390

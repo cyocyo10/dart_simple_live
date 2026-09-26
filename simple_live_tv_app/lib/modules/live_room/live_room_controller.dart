@@ -205,6 +205,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     currentQualityInfo.value = qualites[currentQuality].quality;
     currentLineInfo.value = "";
     currentLineIndex = -1;
+    // 用户主动取流时重置断流重取计数
+    playUrlResolveCount = 0;
     var playUrl = await site.liveSite
         .getPlayUrls(detail: detail.value!, quality: qualites[currentQuality]);
     if (playUrl.urls.isEmpty) {
@@ -259,7 +261,12 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     Log.d("播放结束");
     // 遍历线路，如果全部链接都断开就是直播结束了
     if (playUrls.length - 1 == currentLineIndex) {
-      liveStatus.value = false;
+      // 所有线路均断开。可能是直播结束，也可能是短签名流被服务端切断
+      // (斗鱼 H5 流 5~20 分钟周期断线)，重新取流验证
+      var resolved = await _reResolvePlayUrls();
+      if (!resolved) {
+        liveStatus.value = false;
+      }
     } else {
       changePlayLine(currentLineIndex + 1);
 
@@ -268,6 +275,43 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   }
 
   int mediaErrorRetryCount = 0;
+
+  /// 断流后重新取流(重新签名)的次数上限，防止无限重试
+  int playUrlResolveCount = 0;
+  static const int _maxPlayUrlResolveCount = 3;
+
+  /// 所有线路均失败后，重新调用取流接口获取新签名地址。
+  /// 斗鱼 H5 流带 5 分钟 wsAuth 短签名，断线后旧 URL 重试/换线都是无效的，
+  /// 必须重新签名取流。返回 true 表示已用新地址继续播放。
+  Future<bool> _reResolvePlayUrls() async {
+    if (detail.value == null) {
+      return false;
+    }
+    if (playUrlResolveCount >= _maxPlayUrlResolveCount) {
+      return false;
+    }
+    playUrlResolveCount += 1;
+    Log.d("所有线路失败，重新获取播放地址(第$playUrlResolveCount次)");
+    try {
+      var playUrl = await site.liveSite
+          .getPlayUrls(detail: detail.value!, quality: qualites[currentQuality]);
+      if (playUrl.urls.isEmpty) {
+        return false;
+      }
+      playUrls.value = playUrl.urls;
+      playHeaders = playUrl.headers;
+      currentLineIndex = 0;
+      currentLineInfo.value = "线路${currentLineIndex + 1}";
+      //重置错误次数
+      mediaErrorRetryCount = 0;
+      setPlayer();
+      return true;
+    } catch (e) {
+      Log.logPrint(e);
+      return false;
+    }
+  }
+
   @override
   void mediaError(String error) async {
     if (mediaErrorRetryCount < 2) {
@@ -283,8 +327,12 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     }
 
     if (playUrls.length - 1 == currentLineIndex) {
-      errorMsg.value = "播放失败";
-      SmartDialog.showToast("播放失败:$error");
+      // 所有线路均失败，先用新签名重新取流(斗鱼短签名过期等场景)
+      var resolved = await _reResolvePlayUrls();
+      if (!resolved) {
+        errorMsg.value = "播放失败";
+        SmartDialog.showToast("播放失败:$error");
+      }
     } else {
       //currentLineIndex += 1;
       //setPlayer();

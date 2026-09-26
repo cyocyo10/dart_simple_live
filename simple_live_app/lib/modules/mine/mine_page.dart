@@ -49,7 +49,7 @@ class MinePage extends StatelessWidget {
                   ),
                   applicationName: "Simple Live",
                   applicationVersion: "简简单单看直播",
-                  applicationLegalese: "Ver ${Utils.packageInfo.version}",
+                  applicationLegalese: "Ver ${Utils.packageInfo.version}+${Utils.packageInfo.buildNumber}",
                 ));
               },
             ),

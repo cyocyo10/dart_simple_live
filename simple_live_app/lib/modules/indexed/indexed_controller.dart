@@ -48,6 +48,10 @@ class IndexedController extends GetxController {
       if (index.value == i) {
         EventBus.instance
             .emit<int>(EventBus.kBottomNavigationBarClicked, items[i].index);
+      } else if (items[i].index == 1 &&
+          Get.isRegistered<FollowUserController>()) {
+        // 切回关注 Tab 时刷新列表（进房关注后返回能看到最新数据）
+        Get.find<FollowUserController>().refreshData();
       }
     }
 

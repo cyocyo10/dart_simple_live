@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:simple_live_core/src/common/http_client.dart';
 import 'package:simple_live_core/src/danmaku/douyu_danmaku.dart';
+import 'package:simple_live_core/src/douyu_utils.dart';
 import 'package:simple_live_core/src/interface/live_danmaku.dart';
 import 'package:simple_live_core/src/interface/live_site.dart';
 import 'package:simple_live_core/src/model/live_anchor_item.dart';
@@ -16,7 +17,6 @@ import 'package:simple_live_core/src/model/live_room_detail.dart';
 import 'package:simple_live_core/src/model/live_play_quality.dart';
 import 'package:simple_live_core/src/model/live_category_result.dart';
 import 'package:html_unescape/html_unescape.dart';
-import 'package:simple_live_core/src/scripts/douyu_sign.dart';
 
 class DouyuSite implements LiveSite {
   @override
@@ -34,8 +34,12 @@ class DouyuSite implements LiveSite {
     var result = await HttpClient.instance.getJson(
       "https://m.douyu.com/api/cate/list",
     );
-    var subCateList = result["data"]["cate2Info"] as List;
-    for (var item in result["data"]["cate1Info"]) {
+    var cate2Data = result["data"]?["cate2Info"];
+    if (cate2Data is! List) return categories;
+    var subCateList = cate2Data;
+    var cate1Data = result["data"]?["cate1Info"];
+    if (cate1Data is! List) return categories;
+    for (var item in cate1Data) {
       var cate1Id = item["cate1Id"];
       var cate1Name = item["cate1Name"];
       List<LiveSubCategory> subCategories = [];
@@ -95,19 +99,9 @@ class DouyuSite implements LiveSite {
   Future<List<LivePlayQuality>> getPlayQualites({
     required LiveRoomDetail detail,
   }) async {
-    var data = detail.data.toString();
-    data += "&cdn=&rate=-1&ver=Douyu_223061205&iar=1&ive=1&hevc=0&fa=0";
     List<LivePlayQuality> qualities = [];
-    var result = await HttpClient.instance.postJson(
-      "https://www.douyu.com/lapi/live/getH5Play/${detail.roomId}",
-      data: data,
-      formUrlEncoded: true,
-    );
-
-    var cdns = <String>[];
-    for (var item in result["data"]["cdnsWithName"]) {
-      cdns.add(item["cdn"].toString());
-    }
+    var playData = await _requestPlayData(detail.roomId, rate: -1);
+    var cdns = _parseCdnCodes(playData);
 
     // 如果cdn以scdn开头，将其放到最后
     cdns.sort((a, b) {
@@ -119,13 +113,16 @@ class DouyuSite implements LiveSite {
       return 0;
     });
 
-    for (var item in result["data"]["multirates"]) {
-      qualities.add(
-        LivePlayQuality(
-          quality: item["name"].toString(),
-          data: DouyuPlayData(item["rate"], cdns),
-        ),
-      );
+    var multirates = playData["multirates"];
+    if (multirates is List) {
+      for (var item in multirates) {
+        qualities.add(
+          LivePlayQuality(
+            quality: item["name"].toString(),
+            data: DouyuPlayData(item["rate"], cdns),
+          ),
+        );
+      }
     }
     return qualities;
   }
@@ -135,38 +132,139 @@ class DouyuSite implements LiveSite {
     required LiveRoomDetail detail,
     required LivePlayQuality quality,
   }) async {
-    var args = detail.data.toString();
     var data = quality.data as DouyuPlayData;
 
     List<String> urls = [];
     for (var item in data.cdns) {
-      var url = await getPlayUrl(detail.roomId, args, data.rate, item);
+      var url = await getPlayUrl(detail.roomId, data.rate, item);
       if (url.isNotEmpty) {
         urls.add(url);
       }
     }
-    return LivePlayUrl(urls: urls);
+    // 播放请求头补齐 Referer/Origin/UA/DID Cookie，避免 CDN 403
+    return LivePlayUrl(
+      urls: urls,
+      headers: DouyuUtils.playbackHeaders(detail.roomId),
+    );
   }
 
   Future<String> getPlayUrl(
     String roomId,
-    String args,
     int rate,
     String cdn,
   ) async {
-    args += "&cdn=$cdn&rate=$rate";
-    var result = await HttpClient.instance.postJson(
-      "https://www.douyu.com/lapi/live/getH5Play/$roomId",
-      data: args,
-      header: {
-        'referer': 'https://www.douyu.com/$roomId',
-        'user-agent':
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 Edg/114.0.1823.43",
-      },
-      formUrlEncoded: true,
-    );
+    try {
+      var playData = await _requestPlayData(roomId, rate: rate, cdn: cdn);
+      return _parsePlayUrl(playData);
+    } catch (_) {
+      return "";
+    }
+  }
 
-    return "${result["data"]["rtmp_url"]}/${HtmlUnescape().convert(result["data"]["rtmp_live"].toString())}";
+  /// 请求 getH5PlayV1 取流接口。斗鱼 H5 流地址带 wsAuth 短签名(5 分钟)，
+  /// 失败重试时强制刷新加密描述符重新签名。
+  Future<Map<String, dynamic>> _requestPlayData(
+    String roomId, {
+    int rate = -1,
+    String cdn = "",
+  }) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        var form = await DouyuUtils.buildSignedData(
+          roomId: roomId,
+          rate: rate,
+          cdn: cdn,
+          forceRefresh: attempt > 0,
+        );
+        var result = await HttpClient.instance.postJson(
+          "https://www.douyu.com/lapi/live/getH5PlayV1/$roomId",
+          data: form,
+          header: DouyuUtils.requestHeaders(roomId),
+          formUrlEncoded: true,
+        );
+        if (result is! Map) {
+          throw const FormatException("斗鱼取流响应格式错误");
+        }
+        var errorCode = result["error"] ?? result["code"] ?? -1;
+        if (errorCode != 0) {
+          throw Exception("斗鱼取流接口返回错误 $errorCode: ${result["msg"]}");
+        }
+        var data = result["data"];
+        if (data is! Map) {
+          throw const FormatException("斗鱼取流响应缺少 data");
+        }
+        return Map<String, dynamic>.from(data);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw Exception("斗鱼取流请求失败: $lastError");
+  }
+
+  static List<String> _parseCdnCodes(Map<String, dynamic> data) {
+    var result = <String>[];
+    var cdnsWithName = data["cdnsWithName"];
+    if (cdnsWithName is List) {
+      for (var item in cdnsWithName) {
+        var code = item["cdn"]?.toString().trim() ?? "";
+        if (code.isNotEmpty && !result.contains(code)) {
+          result.add(code);
+        }
+      }
+    }
+    var current = data["rtmp_cdn"]?.toString().trim() ?? "";
+    if (current.isNotEmpty && !result.contains(current)) {
+      result.insert(0, current);
+    }
+    if (result.isEmpty) {
+      result.add("");
+    }
+    return result;
+  }
+
+  /// 解析播放地址。rtmp_live 可能是完整签名地址或相对路径(需与 rtmp_url/flv_url 拼接)，
+  /// 裸 CDN 目录不是合法播放输入，必须拦截。
+  static String _parsePlayUrl(Map<String, dynamic> data) {
+    var unescape = HtmlUnescape();
+    String decode(dynamic value) =>
+        unescape.convert(value?.toString().trim() ?? "");
+
+    var live = decode(data["rtmp_live"]);
+    if (_isPlayableUrl(live)) return live;
+
+    for (var baseKey in const ["rtmp_url", "flv_url"]) {
+      var base = decode(data[baseKey]);
+      if (base.isEmpty || live.isEmpty) continue;
+      var combined =
+          "${base.replaceFirst(RegExp(r'/+$'), '')}/${live.replaceFirst(RegExp(r'^/+'), '')}";
+      if (_isPlayableUrl(combined)) return combined;
+    }
+
+    for (var key in const ["player_1", "stream_url", "url"]) {
+      var value = decode(data[key]);
+      if (_isPlayableUrl(value)) return value;
+    }
+
+    var flvUrl = decode(data["flv_url"]);
+    if (_isDirectMediaUrl(flvUrl)) return flvUrl;
+    return "";
+  }
+
+  static bool _isPlayableUrl(String value) {
+    if (value.isEmpty) return false;
+    var uri = Uri.tryParse(value);
+    return uri != null &&
+        uri.host.isNotEmpty &&
+        const {"http", "https", "rtmp"}.contains(uri.scheme);
+  }
+
+  static bool _isDirectMediaUrl(String value) {
+    if (!_isPlayableUrl(value)) return false;
+    var path = Uri.parse(value).path.toLowerCase();
+    return path.endsWith(".flv") ||
+        path.endsWith(".m3u8") ||
+        path.endsWith(".mp4");
   }
 
   @override
@@ -209,17 +307,6 @@ class DouyuSite implements LiveSite {
     );
     String? showTime = h5RoomInfo["data"]?["show_time"]?.toString();
 
-    var jsEncResult = await HttpClient.instance.getText(
-      "https://www.douyu.com/swf_api/homeH5Enc?rids=$roomId",
-      queryParameters: {},
-      header: {
-        'referer': 'https://www.douyu.com/$roomId',
-        'user-agent':
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 Edg/114.0.1823.43",
-      },
-    );
-    var crptext = json.decode(jsEncResult)["data"]["room$roomId"].toString();
-
     if (showTime != null && showTime.isNotEmpty) {
       try {
         int startTimeStamp = int.parse(showTime);
@@ -249,7 +336,7 @@ class DouyuSite implements LiveSite {
       notice: "",
       status: roomInfo["show_status"] == 1 && roomInfo["videoLoop"] != 1,
       danmakuData: roomInfo["room_id"].toString(),
-      data: DouyuSign.getSign(crptext, roomInfo["room_id"].toString()),
+      data: roomInfo["room_id"].toString(),
       url: "https://www.douyu.com/$roomId",
       isRecord: roomInfo["videoLoop"] == 1,
       showTime: showTime,
@@ -302,9 +389,14 @@ class DouyuSite implements LiveSite {
     );
     Map roomInfo;
     if (result is String) {
-      roomInfo = json.decode(result)["room"];
+      var decoded = json.decode(result);
+      var room = decoded["room"];
+      if (room is! Map) throw Exception("房间数据未找到");
+      roomInfo = room;
     } else {
-      roomInfo = result["room"];
+      var room = result["room"];
+      if (room is! Map) throw Exception("房间数据未找到");
+      roomInfo = room;
     }
     return roomInfo;
   }
@@ -364,6 +456,15 @@ class DouyuSite implements LiveSite {
   Future<bool> getLiveStatus({required String roomId}) async {
     var roomInfo = await _getRoomInfo(roomId);
     return roomInfo["show_status"] == 1 && roomInfo["videoLoop"] != 1;
+  }
+
+  @override
+  Future<int> getLiveStatusDetail({required String roomId}) async {
+    var roomInfo = await _getRoomInfo(roomId);
+    if (roomInfo["show_status"] == 1) {
+      return roomInfo["videoLoop"] == 1 ? 3 : 2; // 回放 or 直播
+    }
+    return 1; // 未开播
   }
 
   int parseHotNum(String hn) {

@@ -101,6 +101,91 @@ class AppStyle {
     //   ),
     // ),
   );
+
+  /// Desktop chrome shares spacing, surfaces and focus/hover treatment.
+  /// Keep the mobile theme unchanged and use the user's chosen accent color.
+  static ThemeData themeFor(ColorScheme colors, {TargetPlatform? platform}) {
+    final base = (colors.brightness == Brightness.dark ? darkTheme : lightTheme)
+        .copyWith(colorScheme: colors);
+    final target = platform ?? base.platform;
+    if (target != TargetPlatform.windows &&
+        target != TargetPlatform.linux &&
+        target != TargetPlatform.macOS) {
+      return base;
+    }
+    final border = BorderSide(color: colors.outlineVariant);
+    final menuShape = RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8), side: border);
+    final font = target == TargetPlatform.windows ? 'Segoe UI Variable' : null;
+    const fallback = [
+      'Segoe UI',
+      'Microsoft YaHei UI',
+      'Microsoft YaHei',
+      'sans-serif'
+    ];
+    return base.copyWith(
+      platform: target,
+      textTheme: base.textTheme.apply(
+        fontFamily: font,
+        fontFamilyFallback: fallback,
+      ),
+      primaryTextTheme: base.primaryTextTheme.apply(
+        fontFamily: font,
+        fontFamilyFallback: fallback,
+      ),
+      appBarTheme: base.appBarTheme.copyWith(
+        centerTitle: false,
+        toolbarHeight: 48,
+        backgroundColor: colors.surface,
+        foregroundColor: colors.onSurface,
+        titleTextStyle: TextStyle(
+            fontFamily: font,
+            fontFamilyFallback: fallback,
+            color: colors.onSurface,
+            fontSize: 16,
+            fontWeight: FontWeight.w600),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: colors.surfaceContainer,
+        surfaceTintColor: Colors.transparent,
+        elevation: 4,
+        shape: menuShape,
+        menuPadding: const EdgeInsets.symmetric(vertical: 4),
+        textStyle: TextStyle(
+            fontFamily: font,
+            fontFamilyFallback: fallback,
+            color: colors.onSurface,
+            fontSize: 14),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: colors.surfaceContainer,
+        surfaceTintColor: Colors.transparent,
+        elevation: 6,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12), side: border),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          minimumSize: const Size(40, 40),
+          padding: const EdgeInsets.all(8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        ),
+      ),
+      tooltipTheme: TooltipThemeData(
+        waitDuration: const Duration(milliseconds: 500),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+            color: colors.inverseSurface,
+            borderRadius: BorderRadius.circular(6)),
+        textStyle: TextStyle(color: colors.onInverseSurface, fontSize: 12),
+      ),
+      scrollbarTheme: const ScrollbarThemeData(
+        radius: Radius.circular(4),
+        thickness: WidgetStatePropertyAll(6),
+      ),
+    );
+  }
+
   static const vGap4 = SizedBox(
     height: 4,
   );

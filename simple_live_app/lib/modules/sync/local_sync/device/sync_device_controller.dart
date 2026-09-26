@@ -28,6 +28,7 @@ class SyncDeviceController extends BaseController {
   }
 
   void syncFollowAndTag() async {
+    var followsSent = false;
     try {
       var overlay = await showOverlayDialog();
       SmartDialog.showLoading(msg: "同步中...");
@@ -36,11 +37,14 @@ class SyncDeviceController extends BaseController {
       var data = json.encode(users.map((e) => e.toJson()).toList());
       var dataT = json.encode(tags.map((e) => e.toJson()).toList());
       await request.syncFollow(client, data, overlay: overlay);
+      followsSent = true;
       // 标签和关注必须同时同步
       await request.syncTag(client, dataT, overlay: overlay);
       SmartDialog.showToast("已同步关注列表和标签");
     } catch (e) {
-      SmartDialog.showToast("同步失败:$e");
+      SmartDialog.showToast(
+        followsSent ? "关注列表已同步，但标签同步失败，请重试" : "关注列表同步失败，请重试",
+      );
       Log.logPrint(e);
     } finally {
       SmartDialog.dismiss();
@@ -88,7 +92,9 @@ class SyncDeviceController extends BaseController {
       SmartDialog.showLoading(msg: "同步中...");
 
       await request.syncBiliAccount(
-          client, BiliBiliAccountService.instance.cookie);
+        client,
+        BiliBiliAccountService.instance.cookie,
+      );
       SmartDialog.showToast("已同步哔哩哔哩账号");
     } catch (e) {
       SmartDialog.showToast("同步失败:$e");

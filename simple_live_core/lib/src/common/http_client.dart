@@ -51,7 +51,7 @@ class HttpClient {
         throw CoreError(e.message ?? "",
             statusCode: e.response?.statusCode ?? 0);
       } else {
-        throw CoreError("发送GET请求失败");
+        throw CoreError("发送GET请求失败: $e");
       }
     }
   }
@@ -84,7 +84,7 @@ class HttpClient {
         throw CoreError(e.message ?? "",
             statusCode: e.response?.statusCode ?? 0);
       } else {
-        throw CoreError("发送GET请求失败");
+        throw CoreError("发送GET请求失败: $e");
       }
     }
   }
@@ -124,7 +124,7 @@ class HttpClient {
         throw CoreError(e.message ?? "",
             statusCode: e.response?.statusCode ?? 0);
       } else {
-        throw CoreError("发送POST请求失败");
+        throw CoreError("发送POST请求失败: $e");
       }
     }
   }
@@ -157,7 +157,7 @@ class HttpClient {
         //throw CoreError(e.message, statusCode: e.response?.statusCode ?? 0);
         return e.response!;
       } else {
-        throw CoreError("发送HEAD请求失败");
+        throw CoreError("发送HEAD请求失败: $e");
       }
     }
   }

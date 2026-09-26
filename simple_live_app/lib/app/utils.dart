@@ -13,6 +13,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:simple_live_app/app/log.dart';
 
+import 'package:simple_live_app/widgets/platform_choice_button.dart';
+import 'package:simple_live_app/widgets/desktop_settings_panel.dart';
+
 typedef TextValidate = bool Function(String text);
 
 class Utils {
@@ -115,6 +118,20 @@ class Utils {
     double width = 320,
     bool useSystem = false,
   }) {
+    if (isDesktopPlatform(Get.context!)) {
+      SmartDialog.show(
+        useSystem: useSystem,
+        alignment: Alignment.center,
+        onDismiss: onDismiss,
+        builder: (_) => DesktopSettingsPanel(
+          title: title,
+          maxWidth: width,
+          onClose: hideRightDialog,
+          child: child,
+        ),
+      );
+      return;
+    }
     SmartDialog.show(
       alignment: Alignment.topRight,
       animationBuilder: (controller, child, animationParam) {
@@ -144,7 +161,7 @@ class Utils {
           left: false,
           right: false,
           child: MediaQuery(
-            data: const MediaQueryData(padding: EdgeInsets.zero),
+            data: MediaQuery.of(context).copyWith(padding: EdgeInsets.zero),
             child: Column(
               children: [
                 ListTile(
@@ -187,6 +204,20 @@ class Utils {
     required Widget child,
     double maxWidth = 600,
   }) async {
+    if (isDesktopPlatform(Get.context!)) {
+      return showDialog(
+        context: Get.context!,
+        builder: (context) => Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: DesktopSettingsPanel(
+            title: title,
+            maxWidth: maxWidth,
+            onClose: () => Navigator.of(context).pop(),
+            child: child,
+          ),
+        ),
+      );
+    }
     var result = await showModalBottomSheet(
       context: Get.context!,
       constraints: BoxConstraints(

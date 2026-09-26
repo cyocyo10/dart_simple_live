@@ -1,5 +1,5 @@
 name: simple_live_app
-version: 1.11.3+11103
+version: 1.14.1+11402
 publish_to: none
 description: "Simple Live APP"
 environment:
@@ -20,7 +20,7 @@ dependencies:
   logger: ^2.6.2 #日志
   intl: ^0.20.2 #国际化
   qr_flutter: ^4.1.0 #二维码生成
-  dynamic_color: ^1.8.1 #动态颜色
+  dynamic_color: 1.8.1 #动态颜色(固定:^1.8.1 会解析到1.9.0,其gradle脚本需要更高版本Kotlin DSL,CI编不过)
   path: any
   collection: any
   udp: ^5.0.3 #UDP
@@ -36,7 +36,7 @@ dependencies:
   flutter_smart_dialog: ^4.9.8+9 #各种弹窗 Toast/Dialog/Popup
   sticky_headers: ^0.3.0+2 #吸顶
   lottie: ^3.3.2 #lottie动画
-  canvas_danmaku: ^0.2.7
+  canvas_danmaku: 0.3.1
   # ns_danmaku: #弹幕
   #   git:
   #     url: https://github.com/xiaoyaocz/flutter_ns_danmaku.git
@@ -56,6 +56,7 @@ dependencies:
   wakelock_plus: ^1.4.0 #屏幕常亮
   file_picker: ^10.3.7 #文件选择
   window_manager: ^0.5.1 #窗口管理
+  desktop_multi_window: ^0.3.0 #桌面多窗口
   floating: ^6.0.0 #PIP画中画
   flutter_inappwebview: ^6.1.5 #WebView
   connectivity_plus: ^7.0.0 #网络状态
@@ -80,12 +81,22 @@ dependencies:
 
 
 dev_dependencies:
+  flutter_test:
+    sdk: flutter
   flutter_lints: ^2.0.0
   build_runner: ^2.3.3
   hive_generator: ^2.0.0
+
+# 本地补丁: auto_orientation_v2 2.4.6 内置源码,上游发布漏了 kotlin-android 插件,
+# .kt 源码不编译导致注册类缺失,补上插件 application 并移除旧 buildscript,
+# 待上游修复后移除
+dependency_overrides:
+  # Preserve font selection when canvas glyph caches are rebuilt.
+  canvas_danmaku:
+    path: plugins/canvas_danmaku
+  auto_orientation_v2:
+    path: plugins/auto_orientation_v2
   flutter_launcher_icons: ^0.13.1
-  flutter_test:
-    sdk: flutter
 
 flutter_launcher_icons:
   android: true

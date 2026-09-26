@@ -1,0 +1,7 @@
+{
+    "version": "1.14.1",
+    "version_num": 11402,
+    "version_desc": "- 修复新窗口观看记录排序，恢复常用宽度下的双列布局\n- 补齐鼠标上下拖动调音量及点击音量滑块\n- 提前显示窗口加载反馈，减少多窗口重复刷新和存储读取\n- 统一桌面菜单、字体和弹窗样式，改善窄窗口及大字号显示",
+    "prerelease": false,
+    "download_url": "https://github.com/cyocyo10/dart_simple_live/releases"
+}

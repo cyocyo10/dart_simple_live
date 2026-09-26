@@ -1,0 +1,152 @@
+name: CI Build
+
+on:
+  push:
+    branches: [dev, master]
+  pull_request:
+    branches: [dev, master]
+
+jobs:
+  build-android:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate app version and tag
+        shell: bash
+        run: python tool/app_version.py
+
+      - name: Download Android keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/keystore.jks
+        shell: bash
+
+      - name: Create key.properties
+        run: |
+          echo "storeFile=/tmp/keystore.jks" > simple_live_app/android/key.properties
+          echo "storePassword=${{ secrets.STORE_PASSWORD }}" >> simple_live_app/android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> simple_live_app/android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> simple_live_app/android/key.properties
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: "zulu"
+          java-version: "17"
+          cache: "gradle"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: "3.38.x"
+          cache: true
+
+      - name: Restore packages
+        run: |
+          cd simple_live_app
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd simple_live_app
+          flutter build apk --release --split-per-abi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-apk
+          path: |
+            simple_live_app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            simple_live_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            simple_live_app/build/app/outputs/flutter-apk/app-x86_64-release.apk
+
+  build-windows:
+    name: build-windows-${{ matrix.package }}
+    runs-on: windows-latest
+    strategy:
+      # 两种包独立构建；任意一种失败不取消另一种。
+      fail-fast: false
+      matrix:
+        include:
+          - package: portable
+            artifact_path: simple_live_app/build/dist/windows-portable/SimpleLive-*-Windows-Portable.zip
+          - package: msix
+            artifact_path: simple_live_app/build/dist/*/*.msix
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate app version and tag
+        shell: bash
+        run: python tool/app_version.py
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: "3.38.x"
+          cache: true
+
+      - name: Enable Flutter Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Restore packages
+        run: |
+          cd simple_live_app
+          flutter pub get
+
+      - name: Validate migration
+        if: matrix.package == 'portable'
+        shell: bash
+        working-directory: simple_live_app
+        run: |
+          flutter analyze --no-fatal-infos
+          flutter test
+          dart test/storage/shared_store_check.dart
+          dart test/storage/shared_store_polling_check.dart
+          dart test/diagnostics/diagnostic_writer_check.dart
+          dart test/migration/transfer_check.dart
+          dart tool/verify_login_session.dart
+          dart tool/verify_room_link_parser.dart
+
+      - name: Validate live platform compatibility
+        if: matrix.package == 'portable'
+        shell: bash
+        working-directory: simple_live_core
+        run: |
+          dart pub get
+          dart test test/migration_core_offline_test.dart
+
+      - name: Install flutter_distributor
+        if: matrix.package == 'msix'
+        run: dart pub global activate flutter_distributor
+
+      - name: Build Windows portable
+        if: matrix.package == 'portable'
+        working-directory: simple_live_app
+        run: flutter build windows --release
+
+      - name: Build Windows MSIX
+        if: matrix.package == 'msix'
+        run: |
+          cd simple_live_app
+          flutter_distributor package --platform windows --targets msix --skip-clean
+
+      - name: Package clean Windows portable bundle
+        if: matrix.package == 'portable'
+        shell: pwsh
+        run: ./simple_live_app/tool/windows/package-portable.ps1
+
+      - name: Verify portable launcher
+        if: matrix.package == 'portable'
+        shell: pwsh
+        run: ./simple_live_app/tool/windows/test-portable.ps1
+
+      - name: Upload Windows
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-${{ matrix.package }}
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error

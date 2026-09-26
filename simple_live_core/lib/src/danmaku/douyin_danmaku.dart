@@ -45,6 +45,7 @@ class DouyinDanmaku implements LiveDanmaku {
 
   @override
   Future start(dynamic args) async {
+    webScoketUtils?.close();
     danmakuArgs = args as DouyinDanmakuArgs;
     var ts = DateTime.now().millisecondsSinceEpoch;
     var uri = Uri.parse(serverUrl).replace(
@@ -92,12 +93,11 @@ class DouyinDanmaku implements LiveDanmaku {
 
     var url = "$uri&signature=$sign";
     var backupUrl = url.replaceAll("webcast3-ws-web-lq", "webcast5-ws-web-lf");
-    print(url);
     webScoketUtils = WebScoketUtils(
       url: url,
       backupUrl: backupUrl,
       headers: {
-        "User-Agnet": DouyinSite.kDefaultUserAgent,
+        "User-Agent": DouyinSite.kDefaultUserAgent,
         "Cookie": danmakuArgs.cookie,
         "Origin": "https://live.douyin.com",
       },

@@ -61,45 +61,64 @@ class BasePageController<T> extends BaseController {
   var canLoadMore = false.obs;
   var list = <T>[].obs;
 
-  Future refreshData() async {
+  int _requestGeneration = 0;
+  bool _disposed = false;
+
+  void cancelPendingLoad() {
+    _requestGeneration++;
+    loadding = false;
+    pageLoadding.value = false;
+  }
+
+  Future<void> refreshData() async {
+    if (_disposed) return;
+    cancelPendingLoad();
     currentPage = 1;
-    list.value = [];
+    list.clear();
+    canLoadMore.value = false;
     await loadData();
   }
 
-  Future loadData() async {
+  Future<void> loadData() async {
+    // Returning from inside try/finally used to release another request's gate.
+    if (loadding || _disposed) return;
+    final generation = _requestGeneration;
+    final page = currentPage;
+    loadding = true;
+    pageError.value = false;
+    pageEmpty.value = false;
+    notLogin.value = false;
+    pageLoadding.value = page == 1;
     try {
-      if (loadding) return;
-      loadding = true;
-      pageError.value = false;
-      pageEmpty.value = false;
-      notLogin.value = false;
-      pageLoadding.value = currentPage == 1;
-
-      var result = await getData(currentPage, pageSize);
-      //是否可以加载更多
-      if (result.isNotEmpty) {
-        currentPage++;
-        canLoadMore.value = true;
-        pageEmpty.value = false;
-      } else {
-        canLoadMore.value = false;
-        if (currentPage == 1) {
-          pageEmpty.value = true;
-        }
-      }
-      // 赋值数据
-      if (currentPage == 1) {
-        list.value = result;
+      final result = await getData(page, pageSize);
+      if (_disposed || generation != _requestGeneration) return;
+      if (page == 1) {
+        list.assignAll(result);
       } else {
         list.addAll(result);
       }
+      currentPage = result.isNotEmpty ? page + 1 : page;
+      canLoadMore.value = result.isNotEmpty;
+      pageEmpty.value = list.isEmpty;
     } catch (e) {
-      handleError(e, showPageError: currentPage == 1);
+      if (!_disposed && generation == _requestGeneration) {
+        handleError(e, showPageError: page == 1);
+      }
     } finally {
-      loadding = false;
-      pageLoadding.value = false;
+      if (!_disposed && generation == _requestGeneration) {
+        loadding = false;
+        pageLoadding.value = false;
+      }
     }
+  }
+
+  @override
+  void onClose() {
+    _disposed = true;
+    _requestGeneration++;
+    scrollController.dispose();
+    easyRefreshController.dispose();
+    super.onClose();
   }
 
   Future<List<T>> getData(int page, int pageSize) async {
@@ -107,7 +126,7 @@ class BasePageController<T> extends BaseController {
   }
 
   void scrollToTopOrRefresh() {
-    if (scrollController.offset > 0) {
+    if (scrollController.hasClients && scrollController.offset > 0) {
       scrollController.animateTo(
         0,
         duration: const Duration(milliseconds: 200),

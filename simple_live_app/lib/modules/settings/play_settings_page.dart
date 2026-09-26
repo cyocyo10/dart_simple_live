@@ -132,6 +132,19 @@ class PlaySettingsPage extends GetView<AppSettingsController> {
                     },
                   ),
                 ),
+                if (Platform.isWindows) ...[
+                  AppStyle.divider,
+                  Obx(
+                    () => SettingsSwitch(
+                      title: "多窗口模式",
+                      subtitle: "每个直播间在新窗口打开",
+                      value: controller.desktopMultiWindow.value,
+                      onChanged: (e) {
+                        controller.setDesktopMultiWindow(e);
+                      },
+                    ),
+                  ),
+                ],
                 AppStyle.divider,
                 Obx(
                   () => Visibility(

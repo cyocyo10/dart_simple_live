@@ -16,12 +16,13 @@ class FollowUserController extends BasePageController<FollowUser> {
   StreamSubscription<dynamic>? onUpdatedIndexedStream;
   StreamSubscription<dynamic>? onUpdatedListStream;
 
-  /// 0:全部 1:直播中 2:未直播
+  /// 0:全部 1:直播中 2:回放中 3:未开播
   var filterMode = FollowUserTag(id: "0", tag: "全部", userId: []).obs;
   RxList<FollowUserTag> tagList = [
     FollowUserTag(id: "0", tag: "全部", userId: []),
     FollowUserTag(id: "1", tag: "直播中", userId: []),
-    FollowUserTag(id: "2", tag: "未开播", userId: []),
+    FollowUserTag(id: "2", tag: "回放中", userId: []),
+    FollowUserTag(id: "3", tag: "未开播", userId: []),
   ].obs;
 
   // 用户自定义标签
@@ -31,7 +32,7 @@ class FollowUserController extends BasePageController<FollowUser> {
   void onInit() {
     onUpdatedIndexedStream = EventBus.instance.listen(
       EventBus.kBottomNavigationBarClicked,
-          (index) {
+      (index) {
         if (index == 1) {
           scrollToTopOrRefresh();
         }
@@ -39,6 +40,8 @@ class FollowUserController extends BasePageController<FollowUser> {
     );
     onUpdatedListStream =
         FollowService.instance.updatedListStream.listen((event) {
+      if (isClosed) return;
+      updateTagList();
       filterData();
     });
     super.onInit();
@@ -47,8 +50,9 @@ class FollowUserController extends BasePageController<FollowUser> {
   @override
   Future refreshData() async {
     await FollowService.instance.loadData();
+    if (isClosed) return;
     updateTagList();
-    super.refreshData();
+    await super.refreshData();
   }
 
   @override
@@ -56,11 +60,13 @@ class FollowUserController extends BasePageController<FollowUser> {
     if (page > 1) {
       return Future.value([]);
     }
-    if (filterMode.value.tag == "全部") {
+    if (filterMode.value.id == "0") {
       return FollowService.instance.followList.value;
-    } else if (filterMode.value.tag == "直播中") {
+    } else if (filterMode.value.id == "1") {
       return FollowService.instance.liveList.value;
-    } else if (filterMode.value.tag == "未开播") {
+    } else if (filterMode.value.id == "2") {
+      return FollowService.instance.replayList.value;
+    } else if (filterMode.value.id == "3") {
       return FollowService.instance.notLiveList.value;
     } else {
       FollowService.instance.filterDataByTag(filterMode.value);
@@ -69,26 +75,28 @@ class FollowUserController extends BasePageController<FollowUser> {
   }
 
   void updateTagList() {
+    final selectedId = filterMode.value.id;
     userTagList.assignAll(FollowService.instance.followTagList);
-    tagList.value = tagList.take(3).toList();
-    for (var i in userTagList) {
-      if (!tagList.contains(i)) {
-        tagList.add(i);
-      }
-    }
+    tagList.assignAll([...tagList.take(4), ...userTagList]);
+    filterMode.value = tagList.firstWhere((tag) => tag.id == selectedId,
+        orElse: () => tagList.first);
   }
 
   void filterData() {
-    if (filterMode.value.tag == "全部") {
+    if (isClosed) return;
+    if (filterMode.value.id == "0") {
       list.assignAll(FollowService.instance.followList.value);
-    } else if (filterMode.value.tag == "直播中") {
+    } else if (filterMode.value.id == "1") {
       list.assignAll(FollowService.instance.liveList.value);
-    } else if (filterMode.value.tag == "未开播") {
+    } else if (filterMode.value.id == "2") {
+      list.assignAll(FollowService.instance.replayList.value);
+    } else if (filterMode.value.id == "3") {
       list.assignAll(FollowService.instance.notLiveList.value);
     } else {
       FollowService.instance.filterDataByTag(filterMode.value);
       list.assignAll(FollowService.instance.curTagFollowList);
     }
+    pageEmpty.value = list.isEmpty;
   }
 
   void setFilterMode(FollowUserTag tag) {
@@ -96,105 +104,65 @@ class FollowUserController extends BasePageController<FollowUser> {
     filterData();
   }
 
-  void removeItem(FollowUser item) async {
-    var result =
-    await Utils.showAlertDialog("确定要取消关注${item.userName}吗?", title: "取消关注");
-    if (!result) {
-      return;
+  Future<bool> _perform(Future<void> Function() action) async {
+    try {
+      await action();
+      await FollowService.instance.loadData(updateStatus: false);
+      if (!isClosed) {
+        updateTagList();
+        filterData();
+      }
+      return true;
+    } catch (error, stack) {
+      Log.e('关注操作失败: $error', stack);
+      SmartDialog.showToast(exceptionToString(error));
+      return false;
     }
-    // 取消关注同时删除标签内的 userId
-    if(item.tag != "全部"){
-      var tag = tagList.firstWhere((tag) => tag.tag == item.tag);
-      tag.userId.remove(item.id);
-      updateTag(tag);
-    }
-    await DBService.instance.followBox.delete(item.id);
-    refreshData();
   }
 
-  void updateItem(FollowUser item){
-    FollowService.instance.addFollow(item);
+  Future<void> removeItem(FollowUser item) async {
+    if (!await Utils.showAlertDialog('确定要取消关注${item.userName}吗?',
+        title: '取消关注')) return;
+    await _perform(() => DBService.instance.deleteFollow(item.id));
   }
-  // 修改item的标签
-  void setItemTag(FollowUser item, FollowUserTag targetTag) {
-    FollowUserTag tarTag = targetTag;
-    FollowUserTag curTag =
-    tagList.firstWhere((tag) => tag.tag == item.tag);
-    // 从当前标签（非全部）删除item 向目标标签(全部包含所有item == 非全部)添加item
-    curTag.userId.remove(item.id);
-    tarTag.userId.addIf(!tarTag.userId.contains(item.id), item.id);
-    // 数据库更新
-    item.tag = tarTag.tag;
-    updateTag(curTag);
-    updateTag(tarTag);
-    updateItem(item);
-    filterData();
+
+  Future<void> updateItem(FollowUser item) async {
+    await _perform(() => FollowService.instance.addFollow(item));
+  }
+
+  Future<void> setItemTag(FollowUser item, FollowUserTag target) async {
+    await _perform(() => DBService.instance
+        .setFollowTag(item.id, target.id == '0' ? null : target.id));
   }
 
   Future<void> removeTag(FollowUserTag tag) async {
-    // 将tag下的所有follow设置为全部
-    for(var i in tag.userId){
-      var follow = DBService.instance.followBox.get(i);
-      if(follow != null){
-        follow.tag = "全部";
-        updateItem(follow);
-      }
-    }
-    await FollowService.instance.delFollowUserTag(tag);
-    updateTagList();
-    Log.i('删除tag${tag.tag}');
+    await _perform(() => DBService.instance.deleteFollowTag(tag.id));
   }
 
-  void addTag(String tag) async {
-    FollowService.instance
-        .addFollowUserTag(tag)
-        .then((value) => updateTagList());
+  Future<void> addTag(String tag) async {
+    await _perform(() => FollowService.instance.addFollowUserTag(tag));
   }
 
-  void updateTag(FollowUserTag followUserTag) {
-    if(followUserTag.tag == '全部'){
-      return;
+  Future<void> updateTagName(FollowUserTag tag, String name) async {
+    if (tag.tag == name) return;
+    if (await _perform(
+        () => DBService.instance.renameFollowTag(tag.id, name))) {
+      SmartDialog.showToast('标签名修改成功');
     }
-    FollowService.instance.updateFollowUserTag(followUserTag);
   }
 
-  void updateTagName(FollowUserTag followUserTag, String newTagName) {
-    // 未操作
-    if (followUserTag.tag == newTagName) {
-      return;
-    }
-    // 避免重名
-    if (tagList.any((item) => item.tag == newTagName)) {
-      SmartDialog.showToast("标签名重复，修改失败");
-      return;
-    }
-    final FollowUserTag newTag = followUserTag.copyWith(tag: newTagName);
-    updateTag(newTag);
-    // update item's tag when update tagName
-    for(var i in newTag.userId){
-      var follow = DBService.instance.followBox.get(i);
-      if(follow != null){
-        follow.tag = newTagName;
-        updateItem(follow);
-      }
-    }
-    SmartDialog.showToast("标签名修改成功");
-    updateTagList();
-  }
-
-  // 调整标签顺序
-  void updateTagOrder(int oldIndex, int newIndex) {
-    if (newIndex > oldIndex) newIndex -= 1; // 处理索引调整
-    final item = userTagList.removeAt(oldIndex);
-    userTagList.insert(newIndex, item);
-    tagList.value = tagList.take(3).toList();
-    tagList.addAll(userTagList);
-    DBService.instance.updateFollowTagOrder(userTagList);
+  Future<void> updateTagOrder(int oldIndex, int newIndex) async {
+    if (newIndex > oldIndex) newIndex--;
+    final order = userTagList.toList();
+    final item = order.removeAt(oldIndex);
+    order.insert(newIndex, item);
+    await _perform(() => DBService.instance.updateFollowTagOrder(order));
   }
 
   @override
   void onClose() {
     onUpdatedIndexedStream?.cancel();
+    onUpdatedListStream?.cancel();
     super.onClose();
   }
 }

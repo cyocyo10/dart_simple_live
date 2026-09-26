@@ -1,0 +1,30 @@
+{
+  "alllive_remote_commit": "c6951df959b7ead0d93edc087188788b49f1e273",
+  "removed_entries": [
+    ".editorconfig",
+    ".git",
+    ".gitattributes",
+    ".github",
+    ".gitignore",
+    ".grok",
+    ".vs",
+    ".vscode",
+    "AllLive.Console",
+    "AllLive.Core",
+    "AllLive.UWP",
+    "AllLive.sln",
+    "Assets",
+    "LICENSE",
+    "README.md",
+    "global.json"
+  ],
+  "removed_allocated_bytes": 508747776,
+  "disk_free_before": 316317696,
+  "disk_free_after": 825065472,
+  "retained_projects": [
+    "dart_simple_live",
+    "pure_live"
+  ],
+  "backup_path": ".local-archive/2026-09-26/AllLive-complete.bundle",
+  "private_files_retained": true
+}

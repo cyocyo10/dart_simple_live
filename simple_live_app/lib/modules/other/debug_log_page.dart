@@ -1,8 +1,6 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:simple_live_app/app/app_style.dart';
 import 'package:simple_live_app/app/log.dart';
@@ -14,21 +12,19 @@ class DebugLogPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Log"),
+        title: const Text("日志诊断"),
         actions: [
           IconButton(
             onPressed: () async {
-              var msg = Log.debugLogs
-                  .map((x) => "${x.datetime}\r\n${x.content}")
-                  .join('\r\n\r\n');
-              var dir = await getApplicationDocumentsDirectory();
-              var logFile = File(
-                  '${dir.path}/${DateTime.now().millisecondsSinceEpoch}.log');
-              await logFile.writeAsString(msg);
-
-              SharePlus.instance.share(ShareParams(
-                files: [XFile(logFile.path)],
-              ));
+              try {
+                final logFile = await Log.exportDiagnostics();
+                await SharePlus.instance.share(
+                  ShareParams(files: [XFile(logFile.path)]),
+                );
+              } catch (error, stack) {
+                Log.e('Unable to export diagnostics: $error', stack);
+                SmartDialog.showToast("导出诊断包失败");
+              }
             },
             icon: const Icon(Icons.save),
           ),
@@ -49,10 +45,7 @@ class DebugLogPage extends StatelessWidget {
             var item = Log.debugLogs[i];
             return SelectableText(
               "${item.datetime.toString()}\r\n${item.content}",
-              style: TextStyle(
-                color: item.color,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: item.color, fontSize: 12),
             );
           },
         ),

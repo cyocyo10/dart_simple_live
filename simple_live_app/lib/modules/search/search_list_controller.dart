@@ -36,6 +36,9 @@ class SearchListController extends BasePageController {
   }
 
   void clear() {
+    cancelPendingLoad();
+    currentPage = 1;
+    canLoadMore.value = false;
     pageEmpty.value = false;
     list.clear();
   }

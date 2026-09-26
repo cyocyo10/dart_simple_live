@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:auto_orientation_v2/auto_orientation_v2.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:floating/floating.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -22,6 +24,9 @@ import 'package:simple_live_app/app/utils.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'danmaku_style.dart';
+import 'package:simple_live_app/services/desktop_lifecycle_service.dart';
+
 mixin PlayerMixin {
   GlobalKey<VideoState> globalPlayerKey = GlobalKey<VideoState>();
   GlobalKey globalDanmuKey = GlobalKey();
@@ -30,9 +35,8 @@ mixin PlayerMixin {
   late final player = Player(
     configuration: PlayerConfiguration(
       title: "Simple Live Player",
-      logLevel: AppSettingsController.instance.logEnable.value
-          ? MPVLogLevel.info
-          : MPVLogLevel.error,
+      // The central logger filters details dynamically in every window.
+      logLevel: MPVLogLevel.info,
     ),
   );
 
@@ -49,7 +53,7 @@ mixin PlayerMixin {
       }
     }
     // media_kit 仓库更新导致的问题，临时解决办法
-    if(Platform.isAndroid){
+    if (Platform.isAndroid) {
       await pp.setProperty('force-seekable', 'yes');
     }
   }
@@ -99,6 +103,90 @@ mixin PlayerStateMixin on PlayerMixin {
 
   /// 是否处于全屏状态
   RxBool fullScreenState = false.obs;
+
+  /// Playback volume belongs to this window; the stored value is only a default.
+  final playbackVolume = 100.0.obs;
+
+  bool _desktopSilenced = false;
+  bool _playerClosing = false;
+  Future<void> _volumeCommands = Future<void>.value();
+  Future<void>? _volumeDrain;
+  bool _volumeDirty = false;
+
+  Future<void> _applyRoomVolume() {
+    _volumeDirty = true;
+    if (_volumeDrain != null) return _volumeDrain!;
+    final completion = Completer<void>();
+    _volumeDrain = completion.future;
+    // Dragging can produce updates faster than the native player responds.
+    // Keep one call in flight and apply only the latest requested value next.
+    _volumeCommands = completion.future.then<void>((_) {},
+        onError: (Object error, StackTrace stack) {
+      Log.e('设置播放器音量失败: $error', stack);
+    });
+    unawaited(_drainRoomVolume(completion));
+    return completion.future;
+  }
+
+  Future<void> _drainRoomVolume(Completer<void> completion) async {
+    try {
+      var retriedLatest = false;
+      while (_volumeDirty && !_playerClosing) {
+        _volumeDirty = false;
+        try {
+          await player.setVolume(_desktopSilenced ? 0 : playbackVolume.value);
+        } catch (_) {
+          // A failed old value must not discard an update received in flight.
+          // Retry the latest target once; a persistently broken player still exits.
+          if (_volumeDirty && !_playerClosing && !retriedLatest) {
+            retriedLatest = true;
+            continue;
+          }
+          rethrow;
+        }
+      }
+      completion.complete();
+    } catch (error, stack) {
+      completion.completeError(error, stack);
+    } finally {
+      _volumeDrain = null;
+    }
+  }
+
+  void setRoomVolume(double value, {bool persistDefault = true}) {
+    if (_playerClosing) return;
+    final volume = value.clamp(0.0, 100.0).toDouble();
+    playbackVolume.value = volume;
+    unawaited(_applyRoomVolume()); // The shared drain already handles errors.
+    if (persistDefault) AppSettingsController.instance.setPlayerVolume(volume);
+  }
+
+  void adjustRoomVolume(double amount) {
+    if (_playerClosing) return;
+    setRoomVolume(playbackVolume.value + amount, persistDefault: false);
+    _showRoomVolumeTip();
+  }
+
+  void _showRoomVolumeTip({bool autoHide = true}) {
+    hidevolumeTimer?.cancel();
+    gestureTipText.value = '音量 ${playbackVolume.value.round()}%';
+    showGestureTip.value = true;
+    if (autoHide) {
+      hidevolumeTimer = Timer(const Duration(milliseconds: 900), () {
+        showGestureTip.value = false;
+      });
+    }
+  }
+
+  Future<void> silenceForDesktopClose() {
+    _desktopSilenced = true;
+    return _applyRoomVolume();
+  }
+
+  Future<void> restoreAfterDesktopClose() {
+    _desktopSilenced = false;
+    return _applyRoomVolume();
+  }
 
   /// 显示手势Tip
   RxBool showGestureTip = false.obs;
@@ -152,12 +240,7 @@ mixin PlayerStateMixin on PlayerMixin {
   void resetHideControlsTimer() {
     hideControlsTimer?.cancel();
 
-    hideControlsTimer = Timer(
-      const Duration(
-        seconds: 5,
-      ),
-      hideControls,
-    );
+    hideControlsTimer = Timer(const Duration(seconds: 5), hideControls);
   }
 
   void updateScaleMode() {
@@ -180,29 +263,62 @@ mixin PlayerStateMixin on PlayerMixin {
       boxFit = BoxFit.contain;
       aspectRatio = 4 / 3;
     }
-    globalPlayerKey.currentState?.update(
-      aspectRatio: aspectRatio,
-      fit: boxFit,
-    );
+    globalPlayerKey.currentState?.update(aspectRatio: aspectRatio, fit: boxFit);
   }
 }
+
 mixin PlayerDanmakuMixin on PlayerStateMixin {
   /// 弹幕控制器
   DanmakuController? danmakuController;
 
+  final List<Worker> _danmakuWorkers = [];
+
+  DanmakuOption get currentDanmakuOption {
+    final settings = AppSettingsController.instance;
+    return DanmakuOption(
+      fontSize: DanmakuStyle.fontSize(
+        settings.danmuSize.value,
+        smallWindow: smallWindowState.value,
+      ),
+      fontWeight: DanmakuStyle.fontWeightIndex(settings.danmuFontWeight.value),
+      fontFamily: settings.danmuFontFamily.value.isEmpty
+          ? null
+          : settings.danmuFontFamily.value,
+      strokeWidth: settings.danmuStrokeWidth.value.clamp(0.0, 5.0).toDouble(),
+      duration: DanmakuStyle.duration(
+        settings.danmuSpeed.value,
+        smallWindow: smallWindowState.value,
+      ),
+      area: settings.danmuArea.value.clamp(0.1, 1.0).toDouble(),
+      opacity: settings.danmuOpacity.value.clamp(0.1, 1.0).toDouble(),
+    );
+  }
+
+  void watchDanmakuSettings() {
+    final settings = AppSettingsController.instance;
+    _danmakuWorkers.add(
+      everAll([
+        settings.danmuSize,
+        settings.danmuFontWeight,
+        settings.danmuFontFamily,
+        settings.danmuStrokeWidth,
+        settings.danmuSpeed,
+        settings.danmuArea,
+        settings.danmuOpacity,
+        smallWindowState,
+      ], (_) => updateDanmuOption(currentDanmakuOption)),
+    );
+    _danmakuWorkers.add(
+      ever(
+        settings.danmuEnable,
+        (bool enabled) => showDanmakuState.value = enabled,
+      ),
+    );
+  }
+
   void initDanmakuController(DanmakuController e) {
     danmakuController = e;
-    // danmakuController?.updateOption(
-    //   DanmakuOption(
-    //     fontSize: AppSettingsController.instance.danmuSize.value,
-    //     area: AppSettingsController.instance.danmuArea.value,
-    //     duration: AppSettingsController.instance.danmuSpeed.value,
-    //     opacity: AppSettingsController.instance.danmuOpacity.value,
-    //     strokeWidth: AppSettingsController.instance.danmuStrokeWidth.value,
-    //     fontWeight: FontWeight
-    //         .values[AppSettingsController.instance.danmuFontWeight.value],
-    //   ),
-    // );
+    updateDanmuOption(currentDanmakuOption);
   }
 
   void updateDanmuOption(DanmakuOption? option) {
@@ -211,7 +327,12 @@ mixin PlayerDanmakuMixin on PlayerStateMixin {
   }
 
   void disposeDanmakuController() {
+    for (final worker in _danmakuWorkers) {
+      worker.dispose();
+    }
+    _danmakuWorkers.clear();
     danmakuController?.clear();
+    danmakuController = null;
   }
 
   void addDanmaku(List<DanmakuContentItem> items) {
@@ -223,6 +344,7 @@ mixin PlayerDanmakuMixin on PlayerStateMixin {
     }
   }
 }
+
 mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
   final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
 
@@ -271,77 +393,108 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     await WakelockPlus.disable();
   }
 
-  /// 进入全屏
-  void enterFullScreen() {
-    fullScreenState.value = true;
+  bool desktopFullScreenState = false;
+  bool _windowTransitioning = false;
+  Size? _lastWindowSize;
+  Offset? _lastWindowPosition;
+  bool _lastAlwaysOnTop = false;
+
+  /// All desktop mode changes are serialized within this playback window.
+  Future<void> enterFullScreen() async {
+    if (_windowTransitioning) return;
     if (Platform.isAndroid || Platform.isIOS) {
-      //全屏
+      fullScreenState.value = true;
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
-      if (!isVertical.value) {
-        //横屏
-        setLandscapeOrientation();
-      }
-    } else {
-      windowManager.setFullScreen(true);
+      if (!isVertical.value) setLandscapeOrientation();
+      return;
     }
-    //danmakuController?.clear();
+    _windowTransitioning = true;
+    try {
+      if (smallWindowState.value) await _restoreSmallWindow();
+      await windowManager.setFullScreen(true);
+      desktopFullScreenState = true;
+      fullScreenState.value = true;
+    } finally {
+      _windowTransitioning = false;
+    }
   }
 
-  /// 退出全屏
-  void exitFull() {
+  Future<void> exitFull() async {
+    if (_windowTransitioning) return;
     if (Platform.isAndroid || Platform.isIOS) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge,
           overlays: SystemUiOverlay.values);
       setPortraitOrientation();
-    } else {
-      windowManager.setFullScreen(false);
+      fullScreenState.value = false;
+      return;
     }
-    fullScreenState.value = false;
-
-    //danmakuController?.clear();
+    _windowTransitioning = true;
+    try {
+      if (smallWindowState.value) await _restoreSmallWindow();
+      if (desktopFullScreenState) await windowManager.setFullScreen(false);
+      desktopFullScreenState = false;
+      fullScreenState.value = false;
+    } finally {
+      _windowTransitioning = false;
+    }
   }
 
-  Size? _lastWindowSize;
-  Offset? _lastWindowPosition;
-
-  ///小窗模式()
-  void enterSmallWindow() async {
-    if (!(Platform.isAndroid || Platform.isIOS)) {
+  Future<void> enterWindowFullScreen() async {
+    if (_windowTransitioning) return;
+    _windowTransitioning = true;
+    try {
+      if (smallWindowState.value) await _restoreSmallWindow();
+      if (desktopFullScreenState) await windowManager.setFullScreen(false);
+      desktopFullScreenState = false;
       fullScreenState.value = true;
-      smallWindowState.value = true;
+    } finally {
+      _windowTransitioning = false;
+    }
+  }
 
-      // 读取窗口大小
+  Future<void> enterSmallWindow() async {
+    if (Platform.isAndroid ||
+        Platform.isIOS ||
+        _windowTransitioning ||
+        smallWindowState.value) return;
+    _windowTransitioning = true;
+    try {
+      if (desktopFullScreenState) await windowManager.setFullScreen(false);
+      desktopFullScreenState = false;
       _lastWindowSize = await windowManager.getSize();
       _lastWindowPosition = await windowManager.getPosition();
-
-      windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-      // 获取视频窗口大小
-      var width = player.state.width ?? 16;
-      var height = player.state.height ?? 9;
-
-      // 横屏还是竖屏
-      if (height > width) {
-        var aspectRatio = width / height;
-        windowManager.setSize(Size(400, 400 / aspectRatio));
-      } else {
-        var aspectRatio = height / width;
-        windowManager.setSize(Size(280 / aspectRatio, 280));
-      }
-
-      windowManager.setAlwaysOnTop(true);
+      _lastAlwaysOnTop = await windowManager.isAlwaysOnTop();
+      await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+      final width = player.state.width ?? 16;
+      final height = player.state.height ?? 9;
+      final ratio = width > 0 && height > 0 ? width / height : 16 / 9;
+      await windowManager
+          .setSize(ratio < 1 ? Size(400, 400 / ratio) : Size(280 * ratio, 280));
+      await windowManager.setAlwaysOnTop(true);
+      fullScreenState.value = true;
+      smallWindowState.value = true;
+    } finally {
+      _windowTransitioning = false;
     }
   }
 
-  ///退出小窗模式()
-  void exitSmallWindow() {
-    if (!(Platform.isAndroid || Platform.isIOS)) {
-      fullScreenState.value = false;
-      smallWindowState.value = false;
-      windowManager.setTitleBarStyle(TitleBarStyle.normal);
-      windowManager.setSize(_lastWindowSize!);
-      windowManager.setPosition(_lastWindowPosition!);
-      windowManager.setAlwaysOnTop(false);
-      //windowManager.setAlignment(Alignment.center);
+  Future<void> _restoreSmallWindow() async {
+    await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+    if (_lastWindowSize != null) await windowManager.setSize(_lastWindowSize!);
+    if (_lastWindowPosition != null)
+      await windowManager.setPosition(_lastWindowPosition!);
+    await windowManager.setAlwaysOnTop(_lastAlwaysOnTop);
+    smallWindowState.value = false;
+    fullScreenState.value = false;
+  }
+
+  Future<void> exitSmallWindow() async {
+    if (!smallWindowState.value || _windowTransitioning) return;
+    _windowTransitioning = true;
+    try {
+      await _restoreSmallWindow();
+    } finally {
+      _windowTransitioning = false;
     }
   }
 
@@ -397,9 +550,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
       }
 
       if (Platform.isIOS || Platform.isAndroid) {
-        await ImageGallerySaverPlus.saveImage(
-          imageData,
-        );
+        await ImageGallerySaverPlus.saveImage(imageData);
         SmartDialog.showToast("已保存截图至相册");
       } else {
         //选择保存文件夹
@@ -455,11 +606,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     } else {
       ratio = const Rational.landscape();
     }
-    await pip.enable(
-      ImmediatePiP(
-        aspectRatio: ratio,
-      ),
-    );
+    await pip.enable(ImmediatePiP(aspectRatio: ratio));
 
     _pipSubscription ??= pip.pipStatusStream.listen((event) {
       if (event == PiPStatus.disabled) {
@@ -470,6 +617,7 @@ mixin PlayerSystemMixin on PlayerMixin, PlayerStateMixin, PlayerDanmakuMixin {
     });
   }
 }
+
 mixin PlayerGestureControlMixin
     on PlayerStateMixin, PlayerMixin, PlayerSystemMixin {
   /// 单击显示/隐藏控制器
@@ -519,6 +667,8 @@ mixin PlayerGestureControlMixin
 
   bool verticalDragging = false;
   bool leftVerticalDrag = false;
+  bool _desktopVolumeDragging = false;
+  double _desktopVolumeDragHeight = 1;
   var _currentVolume = 0.0;
   var _currentBrightness = 1.0;
   var verStartPosition = 0.0;
@@ -526,8 +676,25 @@ mixin PlayerGestureControlMixin
   DelayedThrottle? throttle;
 
   /// 竖向手势开始
-  void onVerticalDragStart(DragStartDetails details) async {
-    if (lockControlsState.value && fullScreenState.value) {
+  void onVerticalDragStart(DragStartDetails details,
+      {double? viewportHeight}) async {
+    if (_playerClosing || (lockControlsState.value && fullScreenState.value)) {
+      return;
+    }
+
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      if (details.kind != PointerDeviceKind.mouse ||
+          viewportHeight == null ||
+          !viewportHeight.isFinite ||
+          viewportHeight <= 0) {
+        return;
+      }
+      // Match AllLive's sensitivity: 80% of the video height spans 0–100%.
+      // Desktop controls affect this player, never the OS-wide volume.
+      _desktopVolumeDragHeight = viewportHeight;
+      _desktopVolumeDragging = true;
+      verticalDragging = true;
+      _showRoomVolumeTip(autoHide: false);
       return;
     }
 
@@ -556,17 +723,25 @@ mixin PlayerGestureControlMixin
 
   /// 竖向手势更新
   void onVerticalDragUpdate(DragUpdateDetails e) async {
-    if (lockControlsState.value && fullScreenState.value) {
+    if (_playerClosing || (lockControlsState.value && fullScreenState.value)) {
+      onVerticalDragCancel();
       return;
     }
     if (verticalDragging == false) return;
+    if (_desktopVolumeDragging) {
+      setRoomVolume(
+        playbackVolume.value -
+            e.delta.dy * 100 / (_desktopVolumeDragHeight * 0.8),
+        persistDefault: false,
+      );
+      _showRoomVolumeTip(autoHide: false);
+      return;
+    }
     if (!Platform.isAndroid && !Platform.isIOS) {
       return;
     }
     //String text = "";
     //double value = 0.0;
-
-    Log.logPrint("$verStartPosition/${e.globalPosition.dy}");
 
     if (leftVerticalDrag) {
       setGestureBrightness(e.globalPosition.dy);
@@ -610,7 +785,6 @@ mixin PlayerGestureControlMixin
   }
 
   Future _realSetVolume(int volume) async {
-    Log.logPrint(volume);
     VolumeController.instance.setVolume(volume / 100);
   }
 
@@ -626,7 +800,6 @@ mixin PlayerGestureControlMixin
       ScreenBrightness.instance.setApplicationScreenBrightness(seek);
 
       gestureTipText.value = "亮度 ${(seek * 100).toInt()}%";
-      Log.logPrint(value);
     } else {
       value = ((dy - verStartPosition) / (Get.height * 0.5));
       var seek = value.abs() + _currentBrightness;
@@ -636,15 +809,15 @@ mixin PlayerGestureControlMixin
 
       ScreenBrightness.instance.setApplicationScreenBrightness(seek);
       gestureTipText.value = "亮度 ${(seek * 100).toInt()}%";
-      Log.logPrint(value);
     }
   }
 
   /// 竖向手势完成
-  void onVerticalDragEnd(DragEndDetails details) async {
-    if (lockControlsState.value && fullScreenState.value) {
-      return;
-    }
+  void onVerticalDragEnd(DragEndDetails details) => onVerticalDragCancel();
+
+  /// A cancelled pointer must not leave the volume gesture or its OSD active.
+  void onVerticalDragCancel() {
+    _desktopVolumeDragging = false;
     throttle = null;
     verticalDragging = false;
     leftVerticalDrag = false;
@@ -661,10 +834,21 @@ class PlayerController extends BaseController
         PlayerGestureControlMixin {
   @override
   void onInit() {
+    watchDanmakuSettings();
     initSystem();
     initStream();
     //设置音量
-    player.setVolume(AppSettingsController.instance.playerVolume.value);
+    setRoomVolume(AppSettingsController.instance.playerVolume.value,
+        persistDefault: false);
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      DesktopLifecycleService.instance.register(
+          this,
+          DesktopCloseParticipant(
+            silence: silenceForDesktopClose,
+            restore: restoreAfterDesktopClose,
+            finish: disposePlayer,
+          ));
+    }
     super.onInit();
   }
 
@@ -677,7 +861,7 @@ class PlayerController extends BaseController
 
   void initStream() {
     _errorSubscription = player.stream.error.listen((event) {
-      Log.d("播放器错误：$event");
+      Log.e("播放器错误：$event", StackTrace.current);
       // 跳过无音频输出的错误
       // Could not open/initialize audio device -> no sound.
       if (event.contains('no sound.')) {
@@ -700,17 +884,25 @@ class PlayerController extends BaseController
       }
     });
     _logSubscription = player.stream.log.listen((event) {
-      Log.d("播放器日志：$event");
+      if (event.level == 'error' || event.level == 'fatal') {
+        Log.e('播放器日志：$event', StackTrace.current);
+      } else if (event.level == 'warn') {
+        Log.w('播放器日志：$event');
+      } else {
+        Log.d('播放器日志：$event');
+      }
     });
     _widthSubscription = player.stream.width.listen((event) {
       Log.d(
-          'width:$event  W:${(player.state.width)}  H:${(player.state.height)}');
+        'width:$event  W:${(player.state.width)}  H:${(player.state.height)}',
+      );
       isVertical.value =
           (player.state.height ?? 9) > (player.state.width ?? 16);
     });
     _heightSubscription = player.stream.height.listen((event) {
       Log.d(
-          'height:$event  W:${(player.state.width)}  H:${(player.state.height)}');
+        'height:$event  W:${(player.state.width)}  H:${(player.state.height)}',
+      );
       isVertical.value =
           (player.state.height ?? 9) > (player.state.width ?? 16);
     });
@@ -756,9 +948,7 @@ class PlayerController extends BaseController
             subtitle: Text(player.state.videoParams.toString()),
             onTap: () {
               Clipboard.setData(
-                ClipboardData(
-                  text: "VideoParams\n${player.state.videoParams}",
-                ),
+                ClipboardData(text: "VideoParams\n${player.state.videoParams}"),
               );
             },
           ),
@@ -767,9 +957,7 @@ class PlayerController extends BaseController
             subtitle: Text(player.state.audioParams.toString()),
             onTap: () {
               Clipboard.setData(
-                ClipboardData(
-                  text: "AudioParams\n${player.state.audioParams}",
-                ),
+                ClipboardData(text: "AudioParams\n${player.state.audioParams}"),
               );
             },
           ),
@@ -778,9 +966,7 @@ class PlayerController extends BaseController
             subtitle: Text(player.state.playlist.toString()),
             onTap: () {
               Clipboard.setData(
-                ClipboardData(
-                  text: "Media\n${player.state.playlist}",
-                ),
+                ClipboardData(text: "Media\n${player.state.playlist}"),
               );
             },
           ),
@@ -789,9 +975,7 @@ class PlayerController extends BaseController
             subtitle: Text(player.state.track.audio.toString()),
             onTap: () {
               Clipboard.setData(
-                ClipboardData(
-                  text: "AudioTrack\n${player.state.track.audio}",
-                ),
+                ClipboardData(text: "AudioTrack\n${player.state.track.audio}"),
               );
             },
           ),
@@ -800,9 +984,7 @@ class PlayerController extends BaseController
             subtitle: Text(player.state.track.video.toString()),
             onTap: () {
               Clipboard.setData(
-                ClipboardData(
-                  text: "VideoTrack\n${player.state.track.audio}",
-                ),
+                ClipboardData(text: "VideoTrack\n${player.state.track.audio}"),
               );
             },
           ),
@@ -822,9 +1004,7 @@ class PlayerController extends BaseController
             subtitle: Text(player.state.volume.toString()),
             onTap: () {
               Clipboard.setData(
-                ClipboardData(
-                  text: "Volume\n${player.state.volume}",
-                ),
+                ClipboardData(text: "Volume\n${player.state.volume}"),
               );
             },
           ),
@@ -833,16 +1013,36 @@ class PlayerController extends BaseController
     );
   }
 
-  @override
-  void onClose() async {
-    Log.w("播放器关闭");
-    if (smallWindowState.value) {
-      exitSmallWindow();
-    }
+  Future<void> beforePlayerDispose() async {}
+  void preparePlayerClose() {}
+  Future<void>? _playerDisposal;
+
+  Future<void> disposePlayer() => _playerDisposal ??= _disposePlayer();
+
+  Future<void> _disposePlayer() async {
+    _playerClosing = true;
+    preparePlayerClose();
+    hideControlsTimer?.cancel();
+    hidevolumeTimer?.cancel();
+    hideSeekTipTimer?.cancel();
     disposeStream();
     disposeDanmakuController();
+    await beforePlayerDispose();
+    await _volumeCommands;
+    Log.w("播放器关闭");
+    if (smallWindowState.value) {
+      await exitSmallWindow();
+    }
     await resetSystem();
     await player.dispose();
+  }
+
+  @override
+  void onClose() {
+    DesktopLifecycleService.instance.unregister(this);
+    unawaited(disposePlayer().catchError((Object error, StackTrace stack) {
+      Log.e('播放器清理失败: $error', stack);
+    }));
     super.onClose();
   }
 }

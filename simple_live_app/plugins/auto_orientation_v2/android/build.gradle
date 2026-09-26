@@ -1,0 +1,25 @@
+group 'com.rizkyghofur.autoorientation'
+version '1.0-SNAPSHOT'
+
+// 本地补丁版: 2.4.6 上游发布漏了 kotlin-android 插件, .kt 源码不被编译,
+// 导致 GeneratedPluginRegistrant 找不到 AutoOrientationPlugin。
+// 移除插件自带的旧 buildscript(AGP 7.4.2), 改用项目 settings 里声明的
+// AGP 8.11.1 + Kotlin 2.2.20, 并补上 kotlin-android 插件 application。
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'com.rizkyghofur.autoorientation'
+    compileSdkVersion 36
+
+    defaultConfig {
+        minSdkVersion 24
+    }
+    lintOptions {
+        disable 'InvalidPackage'
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib"
+}

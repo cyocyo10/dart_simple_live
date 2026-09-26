@@ -4,51 +4,67 @@ import 'package:flutter/services.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:simple_live_app/app/constant.dart';
-import 'package:simple_live_app/app/log.dart';
 import 'package:simple_live_app/app/sites.dart';
 import 'package:simple_live_app/routes/app_navigation.dart';
+import 'package:simple_live_app/modules/mine/parse/room_link_parser.dart';
 
 class ParseController extends GetxController {
   final TextEditingController roomJumpToController = TextEditingController();
   final TextEditingController getUrlController = TextEditingController();
 
-  void jumpToRoom(String e) async {
-    if (e.isEmpty) {
-      SmartDialog.showToast("链接不能为空");
+  bool _jumping = false;
+  bool _readingUrl = false;
+
+  Future<void> jumpToRoom(String text) async {
+    if (_jumping || isClosed) return;
+    if (text.trim().isEmpty) {
+      SmartDialog.showToast('链接不能为空');
       return;
     }
-    // 隐藏键盘
+    _jumping = true;
     FocusManager.instance.primaryFocus?.unfocus();
-
-    var parseResult = await parse(e);
-    if (parseResult.isEmpty && parseResult.first == "") {
-      SmartDialog.showToast("无法解析此链接");
-      return;
+    try {
+      final result = await parse(text);
+      if (isClosed) return;
+      if (result.isEmpty || (result.first as String).isEmpty) {
+        SmartDialog.showToast('无法解析此链接');
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      if (isClosed) return;
+      AppNavigator.toLiveRoomDetail(
+          site: result[1] as Site, roomId: result.first);
+    } catch (_) {
+      if (!isClosed) SmartDialog.showToast('链接解析失败，请检查网络后重试');
+    } finally {
+      _jumping = false;
     }
-
-    // 延迟200ms跳转，等待键盘隐藏
-    Future.delayed(const Duration(milliseconds: 200), () {
-      Site site = parseResult[1];
-      AppNavigator.toLiveRoomDetail(site: site, roomId: parseResult.first);
-    });
   }
 
-  void getPlayUrl(String e) async {
-    if (e.isEmpty) {
-      SmartDialog.showToast("链接不能为空");
+  Future<void> getPlayUrl(String text) async {
+    if (_readingUrl || isClosed) return;
+    if (text.trim().isEmpty) {
+      SmartDialog.showToast('链接不能为空');
       return;
     }
-    var parseResult = await parse(e);
-    if (parseResult.isEmpty && parseResult.first == "") {
-      SmartDialog.showToast("无法解析此链接");
-      return;
-    }
-    Site site = parseResult[1];
+    _readingUrl = true;
+    var loading = false;
     try {
+      final parseResult = await parse(text);
+      if (isClosed) return;
+      if (parseResult.isEmpty || (parseResult.first as String).isEmpty) {
+        SmartDialog.showToast('无法解析此链接');
+        return;
+      }
+      final site = parseResult[1] as Site;
       SmartDialog.showLoading(msg: "");
+      loading = true;
       var detail = await site.liveSite.getRoomDetail(roomId: parseResult.first);
+      if (isClosed) return;
       var qualites = await site.liveSite.getPlayQualites(detail: detail);
+      if (isClosed) return;
       SmartDialog.dismiss(status: SmartStatus.loading);
+      loading = false;
       if (qualites.isEmpty) {
         SmartDialog.showToast("读取直链失败,无法读取清晰度");
 
@@ -70,13 +86,20 @@ class ParseController extends GetxController {
             )
             .toList(),
       ));
-      if (result == null) {
+      if (isClosed || result == null) {
         return;
       }
       SmartDialog.showLoading(msg: "");
+      loading = true;
       var playUrl =
           await site.liveSite.getPlayUrls(detail: detail, quality: result);
       SmartDialog.dismiss(status: SmartStatus.loading);
+      loading = false;
+      if (isClosed) return;
+      if (playUrl.urls.isEmpty) {
+        SmartDialog.showToast("读取直链失败，没有可用线路");
+        return;
+      }
       await Get.dialog(SimpleDialog(
         title: const Text("选择线路"),
         children: playUrl.urls
@@ -100,84 +123,61 @@ class ParseController extends GetxController {
             .toList(),
       ));
     } catch (e) {
-      SmartDialog.showToast("读取直链失败");
+      if (!isClosed) SmartDialog.showToast("读取直链失败");
     } finally {
-      SmartDialog.dismiss(status: SmartStatus.loading);
+      if (loading) SmartDialog.dismiss(status: SmartStatus.loading);
+      _readingUrl = false;
     }
   }
 
-  Future<List> parse(String url) async {
-    var id = "";
-    if (url.contains("bilibili.com")) {
-      var regExp = RegExp(r"bilibili\.com/([\d|\w]+)");
-      id = regExp.firstMatch(url)?.group(1) ?? "";
-      return [id, Sites.allSites[Constant.kBiliBili]!];
-    }
-
-    if (url.contains("b23.tv")) {
-      var btvReg = RegExp(r"https?:\/\/b23.tv\/[0-9a-z-A-Z]+");
-      var u = btvReg.firstMatch(url)?.group(0) ?? "";
-      var location = await getLocation(u);
-
-      return await parse(location);
-    }
-
-    if (url.contains("douyu.com")) {
-      var regExp = RegExp(r"douyu\.com/([\d|\w]+)");
-      // 适配 topic_url
-      if(url.contains("topic")){
-        regExp = RegExp(r"[?&]rid=([\d]+)");
-      }
-      id = regExp.firstMatch(url)?.group(1) ?? "";
-
-      return [id, Sites.allSites[Constant.kDouyu]!];
-    }
-    if (url.contains("huya.com")) {
-      var regExp = RegExp(r"huya\.com/([\d|\w]+)");
-      id = regExp.firstMatch(url)?.group(1) ?? "";
-
-      return [id, Sites.allSites[Constant.kHuya]!];
-    }
-    if (url.contains("live.douyin.com")) {
-      var regExp = RegExp(r"live\.douyin\.com/([\d|\w]+)");
-      id = regExp.firstMatch(url)?.group(1) ?? "";
-
-      return [id, Sites.allSites[Constant.kDouyin]!];
-    }
-    if (url.contains("webcast.amemv.com")) {
-      var regExp = RegExp(r"reflow/(\d+)");
-      id = regExp.firstMatch(url)?.group(1) ?? "";
-      return [id, Sites.allSites[Constant.kDouyin]!];
-    }
-    if (url.contains("v.douyin.com")) {
-      var regExp = RegExp(r"http.?://v.douyin.com/[\d\w]+/");
-      var u = regExp.firstMatch(url)?.group(0) ?? "";
-      var location = await getLocation(u);
-      return await parse(location);
-    }
-
-    return [];
+  Future<List> parse(String text) async {
+    final link = await RoomLinkParser(redirect: (uri) async {
+      if (isClosed) return null;
+      final location = await getLocation(uri.toString());
+      return location.isEmpty ? null : Uri.tryParse(location);
+    }).parse(text);
+    if (link == null) return [];
+    final siteId = switch (link.platform) {
+      RoomLinkPlatform.bilibili => Constant.kBiliBili,
+      RoomLinkPlatform.douyu => Constant.kDouyu,
+      RoomLinkPlatform.huya => Constant.kHuya,
+      RoomLinkPlatform.douyin => Constant.kDouyin,
+    };
+    return [link.roomId, Sites.allSites[siteId]!];
   }
 
   Future<String> getLocation(String url) async {
+    if (isClosed) return '';
+    final uri = Uri.tryParse(url);
+    if (uri == null || !RoomLinkParser.isTrustedUri(uri)) return '';
+    final client = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 8),
+    ));
     try {
-      if (url.isEmpty) return "";
-      await Dio().get(
-        url,
-        options: Options(
-          followRedirects: false,
-        ),
-      );
-    } on DioException catch (e) {
-      if (e.response!.statusCode == 302) {
-        var redirectUrl = e.response!.headers.value("Location");
-        if (redirectUrl != null) {
-          return redirectUrl;
-        }
+      final response = await client.getUri(uri,
+          options: Options(
+            followRedirects: false,
+            validateStatus: (_) => true,
+          ));
+      if ([301, 302, 303, 307, 308].contains(response.statusCode)) {
+        return response.headers.value('location') ?? '';
       }
-    } catch (e) {
-      Log.logPrint(e);
+    } on DioException {
+      // Includes network failures without an HTTP response.
+      return '';
+    } catch (_) {
+      return '';
+    } finally {
+      client.close(force: true);
     }
-    return "";
+    return '';
+  }
+
+  @override
+  void onClose() {
+    roomJumpToController.dispose();
+    getUrlController.dispose();
+    super.onClose();
   }
 }

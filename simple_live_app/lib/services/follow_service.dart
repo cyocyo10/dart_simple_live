@@ -17,8 +17,14 @@ import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/models/db/follow_user.dart';
 import 'package:simple_live_app/models/db/follow_user_tag.dart';
 import 'package:simple_live_app/services/db_service.dart';
+import 'package:simple_live_app/services/data_import.dart';
 
 class FollowService extends GetxService {
+  FollowService({this.backgroundRefresh = true});
+
+  /// Independent live windows share favorites, but only the main window polls
+  /// every followed room. Explicit list refreshes remain available everywhere.
+  final bool backgroundRefresh;
   StreamSubscription<dynamic>? subscription;
   static FollowService get instance => Get.find<FollowService>();
 
@@ -30,6 +36,9 @@ class FollowService extends GetxService {
 
   /// 直播中的用户列表
   RxList<FollowUser> liveList = RxList<FollowUser>();
+
+  /// 回放中的用户列表
+  RxList<FollowUser> replayList = RxList<FollowUser>();
 
   /// 未直播的用户列表
   RxList<FollowUser> notLiveList = RxList<FollowUser>();
@@ -47,11 +56,13 @@ class FollowService extends GetxService {
   var updating = false.obs;
 
   Timer? updateTimer;
+  int _statusGeneration = 0;
 
   @override
   void onInit() {
     subscription = EventBus.instance.listen(Constant.kUpdateFollow, (p0) {
-      loadData(updateStatus: false);
+      // 关注变更后立刻刷新内存列表，并通知关注页 UI
+      unawaited(loadData(updateStatus: backgroundRefresh));
     });
     initTimer();
     super.onInit();
@@ -64,14 +75,14 @@ class FollowService extends GetxService {
       SmartDialog.showToast("标签名重复，修改失败");
       return;
     }
-    FollowUserTag item = await DBService.instance.addFollowTag(tag);
-    followTagList.add(item);
+    await DBService.instance.addFollowTag(tag);
+    getAllTagList();
   }
 
   // 删除标签
   Future<void> delFollowUserTag(FollowUserTag tag) async {
-    followTagList.remove(tag);
     await DBService.instance.deleteFollowTag(tag.id);
+    getAllTagList();
   }
 
   // 获取用户自定义标签列表
@@ -81,38 +92,19 @@ class FollowService extends GetxService {
   }
 
   // 修改标签
-  void updateFollowUserTag(FollowUserTag tag) {
-    DBService.instance.updateFollowTag(tag);
-    // 查找并修改
-    var index = followTagList.indexWhere((oTag) => oTag.id == tag.id);
-    followTagList[index] = tag;
+  Future<void> updateFollowUserTag(FollowUserTag tag) async {
+    await DBService.instance.updateFollowTag(tag);
+    getAllTagList();
   }
 
-  // 根据标签筛选数据
+  // Filtering is read-only: a stale window must never delete tag membership.
   void filterDataByTag(FollowUserTag tag) {
-    curTagFollowList.clear();
-    // 用一个新的列表来存储需要删除的 userId
-    List<String> toRemove = [];
-    for (var id in tag.userId) {
-      if (followList.any((x) => x.id == id)) {
-        // 找到对应的 followUser 添加到 curTagFollowList
-        curTagFollowList.add(followList.firstWhere((x) => x.id == id));
-      } else {
-        // 标记要删除的 id
-        toRemove.add(id);
-      }
-    }
-    // 双向确认用户取消关注后标签内是否还有该用户
-    // 在遍历结束后统一移除不在 followList 中的 id
-    tag.userId.removeWhere((id) => toRemove.contains(id));
-    // 更新数据库
-    if (toRemove.isNotEmpty) {
-      DBService.instance.updateFollowTag(tag);
-    }
-    // 标签内排序
-    curTagFollowList.sort(
-      (a, b) => b.liveStatus.value.compareTo(a.liveStatus.value),
-    );
+    final ids = tag.userId.toSet();
+    curTagFollowList
+        .assignAll(followList.where((item) => ids.contains(item.id)));
+    const priority = {2: 4, 3: 3, 1: 1, 0: 0};
+    curTagFollowList.sort((a, b) => (priority[b.liveStatus.value] ?? 0)
+        .compareTo(priority[a.liveStatus.value] ?? 0));
   }
 
   // 添加关注
@@ -121,8 +113,10 @@ class FollowService extends GetxService {
   }
 
   void initTimer() {
+    updateTimer?.cancel();
+    updateTimer = null;
+    if (!backgroundRefresh || isClosed) return;
     if (AppSettingsController.instance.autoUpdateFollowEnable.value) {
-      updateTimer?.cancel();
       updateTimer = Timer.periodic(
         Duration(
             minutes:
@@ -132,29 +126,40 @@ class FollowService extends GetxService {
           loadData();
         },
       );
-    } else {
-      updateTimer?.cancel();
     }
   }
 
   Future<void> loadData({bool updateStatus = true}) async {
+    if (isClosed) return;
+    final generation = ++_statusGeneration;
     var list = DBService.instance.getFollowList();
     getAllTagList();
     if (list.isEmpty) {
       updating.value = false;
       followList.assignAll(list);
+      liveList.clear();
+      notLiveList.clear();
+      replayList.clear();
+      // 通知关注页（含清空后的 UI）
+      _updatedListController.add(0);
       return;
     }
     followList.assignAll(list);
     if (updateStatus) {
-      startUpdateStatus();
+      await startUpdateStatus(generation: generation);
+    } else {
+      // 不拉直播状态时也要刷新 live/notLive 分类并通知 UI
+      // 新关注 liveStatus=0，会出现在「全部」中
+      updating.value = false;
+      filterData();
     }
   }
 
   /// 获取最优并发数
   /// 根据 CPU 核心数和用户设置自动计算
   int getOptimalConcurrency() {
-    var userSetting = AppSettingsController.instance.updateFollowThreadCount.value;
+    var userSetting =
+        AppSettingsController.instance.updateFollowThreadCount.value;
 
     // 如果用户设置为 0，则自动根据 CPU 核心数计算
     if (userSetting == 0) {
@@ -165,7 +170,7 @@ class FollowService extends GetxService {
       return optimal.clamp(4, 20);
     }
 
-    return userSetting;
+    return userSetting.clamp(1, 20);
   }
 
   /// 按平台交错排列，避免单一平台阻塞
@@ -189,69 +194,66 @@ class FollowService extends GetxService {
     return result;
   }
 
-  void startUpdateStatus() async {
+  Future<void> startUpdateStatus({int? generation}) async {
+    final request = generation ?? ++_statusGeneration;
     updatedCount = 0;
     updating.value = true;
-
-    var concurrency = getOptimalConcurrency();
-
-    Log.logPrint("开始更新关注状态，并发数: $concurrency，总数: ${followList.length}");
-
-    // 按平台交错排列，避免单一平台阻塞
-    var interleavedList = interleaveByPlatform(followList);
-
-    // 创建任务队列
-    var taskQueue = Queue<FollowUser>.from(interleavedList);
-
-    // 工作函数 - 持续从队列中取任务执行
-    Future<void> worker(int workerId) async {
-      while (taskQueue.isNotEmpty) {
-        var item = taskQueue.removeFirst();
-        await updateLiveStatus(item);
+    final queue = Queue<FollowUser>.from(interleaveByPlatform(followList));
+    bool active() => !isClosed && request == _statusGeneration;
+    Future<void> worker() async {
+      while (queue.isNotEmpty && active()) {
+        final item = queue.removeFirst();
+        await _updateLiveStatus(item, active);
+        if (active()) updatedCount++;
       }
     }
 
-    // 启动固定数量的并发 worker
-    var workers = <Future>[];
-    for (var i = 0; i < concurrency; i++) {
-      workers.add(worker(i));
+    try {
+      await Future.wait(
+          List.generate(getOptimalConcurrency(), (_) => worker()));
+    } finally {
+      if (active()) {
+        updating.value = false;
+        filterData();
+      }
     }
-
-    await Future.wait(workers);
-
-    Log.logPrint("关注状态更新完成");
   }
 
-  Future updateLiveStatus(FollowUser item) async {
+  Future<void> _updateLiveStatus(
+      FollowUser item, bool Function() active) async {
     try {
-      var site = Sites.allSites[item.siteId]!;
-      // 先只查状态
-      var isLiving = await site.liveSite.getLiveStatus(roomId: item.roomId);
-      item.liveStatus.value = isLiving ? 2 : 1;
-      if (item.liveStatus.value == 2) {
-        // 只有正在直播时才查详细信息
-        var detail = await site.liveSite.getRoomDetail(roomId: item.roomId);
+      final site = Sites.allSites[item.siteId];
+      if (site == null) return;
+      final status =
+          await site.liveSite.getLiveStatusDetail(roomId: item.roomId);
+      if (!active()) return;
+      item.liveStatus.value = status;
+      if (status == 2 || status == 3) {
+        final detail = await site.liveSite.getRoomDetail(roomId: item.roomId);
+        if (!active()) return;
         item.liveStartTime = detail.showTime;
       } else {
         item.liveStartTime = null;
       }
     } catch (e) {
       Log.logPrint(e);
-      item.liveStatus.value = 0;
-      item.liveStartTime = null;
-    } finally {
-      updatedCount++;
-      if (updatedCount >= followList.length) {
-        filterData();
-        updating.value = false;
+      if (active()) {
+        item.liveStatus.value = 0;
+        item.liveStartTime = null;
       }
     }
   }
 
   void filterData() {
-    followList.sort((a, b) => b.liveStatus.value.compareTo(a.liveStatus.value));
+    if (isClosed) return;
+    // 排序优先级：直播(2) > 回放(3) > 未开播(1) > 加载中(0)
+    const statusPriority = {2: 4, 3: 3, 1: 1, 0: 0};
+    followList.sort((a, b) => (statusPriority[b.liveStatus.value] ?? 0)
+        .compareTo(statusPriority[a.liveStatus.value] ?? 0));
     liveList.assignAll(followList.where((x) => x.liveStatus.value == 2));
-    notLiveList.assignAll(followList.where((x) => x.liveStatus.value == 1));
+    replayList.assignAll(followList.where((x) => x.liveStatus.value == 3));
+    notLiveList.assignAll(followList
+        .where((x) => x.liveStatus.value == 1 || x.liveStatus.value == 0));
     _updatedListController.add(0);
   }
 
@@ -419,27 +421,18 @@ class FollowService extends GetxService {
     return jsonEncode(data);
   }
 
-  Future inputJson(String content) async {
-    var data = jsonDecode(content);
-
-    for (var item in data) {
-      var follow = FollowUser.fromJson(item);
-      // 导入关注列表同时导入标签列表 此方法可优化为所有导入逻辑
-      if (follow.tag != "全部") {
-        // logic: 尝试添加，存在则返回已存在的对象
-        var tag = await DBService.instance.addFollowTag(follow.tag);
-        // 更新tag
-        tag.userId.addIf(!tag.userId.contains(follow.id), follow.id);
-        await DBService.instance.updateFollowTag(tag);
-      }
-      await DBService.instance.addFollow(follow);
-    }
+  Future<void> inputJson(String content) async {
+    // Validate the final row as well before committing any follow or tag.
+    final imported = DataImport.decodeFollowUsers(content);
+    await DBService.instance.importFollows(imported);
   }
 
   @override
   void onClose() {
+    _statusGeneration++;
     updateTimer?.cancel();
     subscription?.cancel();
+    _updatedListController.close();
     super.onClose();
   }
 }

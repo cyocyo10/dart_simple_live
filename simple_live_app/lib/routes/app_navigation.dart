@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:simple_live_app/app/constant.dart';
+import 'package:simple_live_app/app/log.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_app/app/sites.dart';
 import 'package:simple_live_app/app/utils.dart';
@@ -49,10 +51,40 @@ class AppNavigator {
         }
       }
     }
+    // Capture the visit before process startup or room/network initialization.
+    final openedAt = DateTime.now().toUtc().toIso8601String();
 
-    Get.toNamed(RoutePath.kLiveRoomDetail, arguments: site, parameters: {
-      "roomId": roomId,
-    });
+    if (Platform.isWindows &&
+        AppSettingsController.instance.desktopMultiWindow.value) {
+      // 多进程方案：启动独立进程作为子窗口，
+      // 避免 MediaKitVideoPlugin static 单例在同进程多引擎下冲突
+      // (media-kit/media-kit#1341)
+      // 必须用 detached 模式，否则子进程 stdout 管道缓冲区满后会卡死
+      try {
+        await Process.start(
+          Platform.resolvedExecutable,
+          [
+            '--sub-window',
+            jsonEncode({
+              'siteId': site.id,
+              'roomId': roomId,
+              'openedAt': openedAt,
+            }),
+          ],
+          mode: ProcessStartMode.detached,
+          workingDirectory: File(Platform.resolvedExecutable).parent.path,
+        );
+      } catch (error, stack) {
+        Log.e('打开直播窗口失败: $error', stack);
+        SmartDialog.showToast('打开直播窗口失败，请在设置中导出诊断日志');
+      }
+    } else {
+      Get.toNamed(
+        RoutePath.kLiveRoomDetail,
+        arguments: site,
+        parameters: {"roomId": roomId, "openedAt": openedAt},
+      );
+    }
   }
 
   /// 跳转至哔哩哔哩登录

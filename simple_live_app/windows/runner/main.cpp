@@ -1,6 +1,7 @@
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
+#include <filesystem>
 
 #include "flutter_window.h"
 #include "utils.h"
@@ -17,7 +18,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // plugins.
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
-  flutter::DartProject project(L"data");
+  // Shortcuts and detached live windows may start from any working directory.
+  std::wstring executable_path(32768, L'\0');
+  DWORD path_length = ::GetModuleFileNameW(nullptr, executable_path.data(),
+                                         static_cast<DWORD>(executable_path.size()));
+  if (path_length == 0 || path_length >= executable_path.size()) {
+    return EXIT_FAILURE;
+  }
+  executable_path.resize(path_length);
+  const auto data_path = std::filesystem::path(executable_path).parent_path() / L"data";
+  flutter::DartProject project(data_path.wstring());
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();

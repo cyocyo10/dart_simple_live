@@ -1,4 +1,10 @@
 import 'dart:io';
+import 'player_gesture_region.dart';
+
+import 'package:simple_live_app/widgets/platform_choice_button.dart';
+import 'package:simple_live_app/widgets/desktop_control_bar.dart';
+import 'package:simple_live_app/widgets/desktop_volume_button.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -16,19 +22,15 @@ import 'package:simple_live_app/widgets/desktop_refresh_button.dart';
 import 'package:simple_live_app/widgets/follow_user_item.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:simple_live_app/widgets/superchat_card.dart';
+
 import 'dart:async';
+
 import 'package:simple_live_core/simple_live_core.dart';
 
-Widget playerControls(
-  VideoState videoState,
-  LiveRoomController controller,
-) {
+Widget playerControls(VideoState videoState, LiveRoomController controller) {
   return Obx(() {
     if (controller.fullScreenState.value) {
-      return buildFullControls(
-        videoState,
-        controller,
-      );
+      return buildFullControls(videoState, controller);
     }
     return buildControls(
       videoState.context.orientation == Orientation.portrait,
@@ -38,12 +40,11 @@ Widget playerControls(
   });
 }
 
-Widget buildFullControls(
-  VideoState videoState,
-  LiveRoomController controller,
-) {
+Widget buildFullControls(VideoState videoState, LiveRoomController controller) {
   var padding = MediaQuery.of(videoState.context).padding;
-  GlobalKey volumeButtonkey = GlobalKey();
+  final controlsDuration = MediaQuery.disableAnimationsOf(videoState.context)
+      ? Duration.zero
+      : const Duration(milliseconds: 150);
   return DragToMoveArea(
     child: Stack(
       children: [
@@ -71,25 +72,19 @@ Widget buildFullControls(
             initialData: videoState.widget.controller.player.state.buffering,
             builder: (_, s) => Visibility(
               visible: s.data ?? false,
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
+              child: const Center(child: CircularProgressIndicator()),
             ),
           ),
         ),
         Positioned.fill(
-          child: GestureDetector(
-            onTap: controller.onTap,
-            onDoubleTapDown: controller.onDoubleTap,
+          child: PlayerGestureRegion(
+            controller: controller,
             onLongPress: () {
               if (controller.lockControlsState.value) {
                 return;
               }
               showFollowUser(controller);
             },
-            onVerticalDragStart: controller.onVerticalDragStart,
-            onVerticalDragUpdate: controller.onVerticalDragUpdate,
-            onVerticalDragEnd: controller.onVerticalDragEnd,
             child: MouseRegion(
               onHover: (PointerHoverEvent event) {
                 controller.onHover(event, videoState.context);
@@ -98,16 +93,6 @@ Widget buildFullControls(
                 width: double.infinity,
                 height: double.infinity,
                 color: Colors.transparent,
-                // child: Visibility(
-                //   //拖拽区域
-                //   visible: controller.smallWindowState.value,
-                //   child: DragToMoveArea(
-                //       child: Container(
-                //     width: double.infinity,
-                //     height: double.infinity,
-                //     color: Colors.transparent,
-                //   )),
-                // ),
               ),
             ),
           ),
@@ -122,7 +107,7 @@ Widget buildFullControls(
                     !controller.lockControlsState.value)
                 ? 0
                 : -(48 + padding.top),
-            duration: const Duration(milliseconds: 200),
+            duration: controlsDuration,
             child: Container(
               height: 48 + padding.top,
               padding: EdgeInsets.only(
@@ -134,15 +119,13 @@ Widget buildFullControls(
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black87,
-                  ],
+                  colors: [Colors.transparent, Colors.black87],
                 ),
               ),
               child: Row(
                 children: [
                   IconButton(
+                    tooltip: '退出小窗或全屏',
                     onPressed: () {
                       if (controller.smallWindowState.value) {
                         controller.exitSmallWindow();
@@ -167,6 +150,7 @@ Widget buildFullControls(
                   ),
                   AppStyle.hGap12,
                   IconButton(
+                    tooltip: '截图',
                     onPressed: () {
                       controller.saveScreenshot();
                     },
@@ -177,6 +161,7 @@ Widget buildFullControls(
                     ),
                   ),
                   IconButton(
+                    tooltip: '关注列表',
                     onPressed: () {
                       showFollowUser(controller);
                     },
@@ -189,6 +174,7 @@ Widget buildFullControls(
                   Visibility(
                     visible: Platform.isAndroid,
                     child: IconButton(
+                      tooltip: '画中画',
                       onPressed: () {
                         controller.enablePIP();
                       },
@@ -200,6 +186,7 @@ Widget buildFullControls(
                     ),
                   ),
                   IconButton(
+                    tooltip: '播放设置',
                     onPressed: () {
                       showPlayerSettings(controller);
                     },
@@ -223,16 +210,13 @@ Widget buildFullControls(
                     !controller.lockControlsState.value)
                 ? 0
                 : -(80 + padding.bottom),
-            duration: const Duration(milliseconds: 200),
+            duration: controlsDuration,
             child: Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black87,
-                  ],
+                  colors: [Colors.transparent, Colors.black87],
                 ),
               ),
               padding: EdgeInsets.only(
@@ -240,20 +224,20 @@ Widget buildFullControls(
                 right: padding.right + 12,
                 bottom: padding.bottom,
               ),
-              child: Row(
+              child: DesktopControlBar(
+                  child: Row(
                 children: [
                   IconButton(
+                    tooltip: '重新连接',
                     onPressed: () {
                       controller.refreshRoom();
                     },
-                    icon: const Icon(
-                      Remix.refresh_line,
-                      color: Colors.white,
-                    ),
+                    icon: const Icon(Remix.refresh_line, color: Colors.white),
                   ),
                   Offstage(
                     offstage: controller.showDanmakuState.value,
                     child: IconButton(
+                      tooltip: '显示弹幕',
                       onPressed: () => controller.showDanmakuState.value =
                           !controller.showDanmakuState.value,
                       icon: const ImageIcon(
@@ -266,6 +250,7 @@ Widget buildFullControls(
                   Offstage(
                     offstage: !controller.showDanmakuState.value,
                     child: IconButton(
+                      tooltip: '隐藏弹幕',
                       onPressed: () => controller.showDanmakuState.value =
                           !controller.showDanmakuState.value,
                       icon: const ImageIcon(
@@ -276,6 +261,7 @@ Widget buildFullControls(
                     ),
                   ),
                   IconButton(
+                    tooltip: '弹幕设置',
                     onPressed: () {
                       showDanmakuSettings(controller);
                     },
@@ -290,49 +276,25 @@ Widget buildFullControls(
                       padding: const EdgeInsets.only(left: 8.0),
                       child: Text(
                         controller.liveDuration.value,
-                        style:
-                            const TextStyle(fontSize: 14, color: Colors.white),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
                   const Expanded(child: Center()),
                   Visibility(
                     visible: !Platform.isAndroid && !Platform.isIOS,
-                    child: IconButton(
-                      key: volumeButtonkey,
-                      onPressed: () {
-                        controller
-                            .showVolumeSlider(volumeButtonkey.currentContext!);
-                      },
-                      icon: const Icon(
-                        Icons.volume_down,
-                        size: 24,
-                        color: Colors.white,
-                      ),
-                    ),
+                    child: buildVolumeButton(controller),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      showQualitesInfo(controller);
-                    },
-                    child: Obx(
-                      () => Text(
-                        controller.currentQualityInfo.value,
-                        style:
-                            const TextStyle(color: Colors.white, fontSize: 15),
-                      ),
-                    ),
+                  buildQualityChoice(
+                    controller,
+                    () => showQualitesInfo(controller),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      showLinesInfo(controller);
-                    },
-                    child: Text(
-                      controller.currentLineInfo.value,
-                      style: const TextStyle(color: Colors.white, fontSize: 15),
-                    ),
-                  ),
+                  buildLineChoice(controller, () => showLinesInfo(controller)),
                   IconButton(
+                    tooltip: '退出小窗或全屏',
                     onPressed: () {
                       if (controller.smallWindowState.value) {
                         controller.exitSmallWindow();
@@ -346,7 +308,7 @@ Widget buildFullControls(
                     ),
                   ),
                 ],
-              ),
+              )),
             ),
           ),
         ),
@@ -359,7 +321,7 @@ Widget buildFullControls(
             right: controller.showControlsState.value
                 ? padding.right + 12
                 : -(64 + padding.right),
-            duration: const Duration(milliseconds: 200),
+            duration: controlsDuration,
             child: buildLockButton(controller),
           ),
         ),
@@ -371,12 +333,13 @@ Widget buildFullControls(
             left: controller.showControlsState.value
                 ? padding.left + 12
                 : -(64 + padding.right),
-            duration: const Duration(milliseconds: 200),
+            duration: controlsDuration,
             child: buildLockButton(controller),
           ),
         ),
         Obx(
-          () => Offstage(
+          () => IgnorePointer(
+              child: Offstage(
             offstage: !controller.showGestureTip.value,
             child: Center(
               child: Container(
@@ -391,7 +354,7 @@ Widget buildFullControls(
                 ),
               ),
             ),
-          ),
+          )),
         ),
       ],
     ),
@@ -430,7 +393,9 @@ Widget buildControls(
   VideoState videoState,
   LiveRoomController controller,
 ) {
-  GlobalKey volumeButtonkey = GlobalKey();
+  final controlsDuration = MediaQuery.disableAnimationsOf(videoState.context)
+      ? Duration.zero
+      : const Duration(milliseconds: 150);
   return Stack(
     children: [
       Container(),
@@ -457,20 +422,13 @@ Widget buildControls(
           initialData: videoState.widget.controller.player.state.buffering,
           builder: (_, s) => Visibility(
             visible: s.data ?? false,
-            child: const Center(
-              child: CircularProgressIndicator(),
-            ),
+            child: const Center(child: CircularProgressIndicator()),
           ),
         ),
       ),
       Positioned.fill(
-        child: GestureDetector(
-          onTap: controller.onTap,
-          onDoubleTapDown: controller.onDoubleTap,
-          onVerticalDragStart: controller.onVerticalDragStart,
-          onVerticalDragUpdate: controller.onVerticalDragUpdate,
-          onVerticalDragEnd: controller.onVerticalDragEnd,
-          //onLongPress: controller.showDebugInfo,
+        child: PlayerGestureRegion(
+          controller: controller,
           child: MouseRegion(
             onEnter: controller.onEnter,
             child: Container(
@@ -486,32 +444,29 @@ Widget buildControls(
           left: 0,
           right: 0,
           bottom: controller.showControlsState.value ? 0 : -48,
-          duration: const Duration(milliseconds: 200),
+          duration: controlsDuration,
           child: Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  Colors.black87,
-                ],
+                colors: [Colors.transparent, Colors.black87],
               ),
             ),
-            child: Row(
+            child: DesktopControlBar(
+                child: Row(
               children: [
                 IconButton(
+                  tooltip: '重新连接',
                   onPressed: () {
                     controller.refreshRoom();
                   },
-                  icon: const Icon(
-                    Remix.refresh_line,
-                    color: Colors.white,
-                  ),
+                  icon: const Icon(Remix.refresh_line, color: Colors.white),
                 ),
                 Offstage(
                   offstage: controller.showDanmakuState.value,
                   child: IconButton(
+                    tooltip: '显示弹幕',
                     onPressed: () => controller.showDanmakuState.value =
                         !controller.showDanmakuState.value,
                     icon: const ImageIcon(
@@ -524,6 +479,7 @@ Widget buildControls(
                 Offstage(
                   offstage: !controller.showDanmakuState.value,
                   child: IconButton(
+                    tooltip: '隐藏弹幕',
                     onPressed: () => controller.showDanmakuState.value =
                         !controller.showDanmakuState.value,
                     icon: const ImageIcon(
@@ -534,6 +490,7 @@ Widget buildControls(
                   ),
                 ),
                 IconButton(
+                  tooltip: '弹幕设置',
                   onPressed: () {
                     controller.showDanmuSettingsSheet();
                   },
@@ -555,50 +512,28 @@ Widget buildControls(
                 const Expanded(child: Center()),
                 Visibility(
                   visible: !Platform.isAndroid && !Platform.isIOS,
-                  child: IconButton(
-                    key: volumeButtonkey,
-                    onPressed: () {
-                      controller.showVolumeSlider(
-                        volumeButtonkey.currentContext!,
-                      );
-                    },
-                    icon: const Icon(
-                      Icons.volume_down,
-                      size: 24,
-                      color: Colors.white,
-                    ),
+                  child: buildVolumeButton(controller),
+                ),
+                Offstage(
+                  offstage:
+                      isPortrait && !isDesktopPlatform(videoState.context),
+                  child: buildQualityChoice(
+                    controller,
+                    controller.showQualitySheet,
                   ),
                 ),
                 Offstage(
-                  offstage: isPortrait,
-                  child: TextButton(
-                    onPressed: () {
-                      controller.showQualitySheet();
-                    },
-                    child: Obx(
-                      () => Text(
-                        controller.currentQualityInfo.value,
-                        style:
-                            const TextStyle(color: Colors.white, fontSize: 15),
-                      ),
-                    ),
-                  ),
-                ),
-                Offstage(
-                  offstage: isPortrait,
-                  child: TextButton(
-                    onPressed: () {
-                      controller.showPlayUrlsSheet();
-                    },
-                    child: Text(
-                      controller.currentLineInfo.value,
-                      style: const TextStyle(color: Colors.white, fontSize: 15),
-                    ),
+                  offstage:
+                      isPortrait && !isDesktopPlatform(videoState.context),
+                  child: buildLineChoice(
+                    controller,
+                    controller.showPlayUrlsSheet,
                   ),
                 ),
                 Visibility(
                   visible: !Platform.isAndroid && !Platform.isIOS,
                   child: IconButton(
+                    tooltip: '置顶小窗',
                     onPressed: () {
                       controller.enterSmallWindow();
                     },
@@ -609,22 +544,31 @@ Widget buildControls(
                     ),
                   ),
                 ),
+                Visibility(
+                  visible: !Platform.isAndroid && !Platform.isIOS,
+                  child: IconButton(
+                    tooltip: '窗口铺满',
+                    onPressed: () {
+                      controller.enterWindowFullScreen();
+                    },
+                    icon: const Icon(Icons.crop_free, color: Colors.white),
+                  ),
+                ),
                 IconButton(
+                  tooltip: '全屏',
                   onPressed: () {
                     controller.enterFullScreen();
                   },
-                  icon: const Icon(
-                    Remix.fullscreen_line,
-                    color: Colors.white,
-                  ),
+                  icon: const Icon(Remix.fullscreen_line, color: Colors.white),
                 ),
               ],
-            ),
+            )),
           ),
         ),
       ),
       Obx(
-        () => Offstage(
+        () => IgnorePointer(
+            child: Offstage(
           offstage: !controller.showGestureTip.value,
           child: Center(
             child: Container(
@@ -639,7 +583,7 @@ Widget buildControls(
               ),
             ),
           ),
-        ),
+        )),
       ),
     ],
   );
@@ -650,14 +594,7 @@ Widget buildDanmuView(VideoState videoState, LiveRoomController controller) {
   controller.danmakuView ??= DanmakuScreen(
     key: controller.globalDanmuKey,
     createdController: controller.initDanmakuController,
-    option: DanmakuOption(
-      fontSize: AppSettingsController.instance.danmuSize.value,
-      area: AppSettingsController.instance.danmuArea.value,
-      duration: AppSettingsController.instance.danmuSpeed.value.toInt(),
-      opacity: AppSettingsController.instance.danmuOpacity.value,
-      //strokeWidth: AppSettingsController.instance.danmuStrokeWidth.value,
-      fontWeight: AppSettingsController.instance.danmuFontWeight.value,
-    ),
+    option: controller.currentDanmakuOption,
   );
   return Positioned.fill(
     top: padding.top,
@@ -680,6 +617,63 @@ Widget buildDanmuView(VideoState videoState, LiveRoomController controller) {
   );
 }
 
+Widget buildQualityChoice(LiveRoomController controller, VoidCallback mobile) =>
+    Obx(() {
+      final choices = controller.qualites.toList();
+      return PlatformChoiceButton(
+        label: controller.currentQualityInfo.value.isEmpty
+            ? '清晰度'
+            : controller.currentQualityInfo.value,
+        options: choices.map((item) => item.quality).toList(),
+        selectedIndex: controller.currentQuality,
+        onMobilePressed: mobile,
+        onOpened: () {
+          controller.hideControlsTimer?.cancel();
+          controller.showControlsState.value = true;
+        },
+        onClosed: () {
+          if (!controller.isClosed) controller.resetHideControlsTimer();
+        },
+        onSelected: (i) {
+          if (controller.isClosed || i < 0 || i >= choices.length) return;
+          final index = controller.qualites
+              .indexWhere((item) => identical(item, choices[i]));
+          if (index < 0 || index == controller.currentQuality) return;
+          controller.currentQuality = index;
+          controller.getPlayUrl();
+        },
+      );
+    });
+
+Widget buildLineChoice(LiveRoomController controller, VoidCallback mobile) =>
+    Obx(() {
+      final choices = controller.playUrls.toList();
+      return PlatformChoiceButton(
+        label: controller.currentLineInfo.value.isEmpty
+            ? '线路'
+            : controller.currentLineInfo.value,
+        options: [
+          for (var i = 0; i < choices.length; i++)
+            '线路${i + 1} · ${choices[i].contains('.flv') ? 'FLV' : 'HLS'}'
+        ],
+        selectedIndex: controller.currentLineIndex,
+        onMobilePressed: mobile,
+        onOpened: () {
+          controller.hideControlsTimer?.cancel();
+          controller.showControlsState.value = true;
+        },
+        onClosed: () {
+          if (!controller.isClosed) controller.resetHideControlsTimer();
+        },
+        onSelected: (i) {
+          if (controller.isClosed || i < 0 || i >= choices.length) return;
+          final index = controller.playUrls.indexOf(choices[i]);
+          if (index < 0 || index == controller.currentLineIndex) return;
+          controller.changePlayLine(index);
+        },
+      );
+    });
+
 void showLinesInfo(LiveRoomController controller) {
   if (controller.isVertical.value) {
     controller.showPlayUrlsSheet();
@@ -699,22 +693,19 @@ void showLinesInfo(LiveRoomController controller) {
               text: "线路${i + 1}",
               children: [
                 WidgetSpan(
-                    child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: AppStyle.radius4,
-                    border: Border.all(
-                      color: Colors.grey,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: AppStyle.radius4,
+                      border: Border.all(color: Colors.grey),
+                    ),
+                    padding: AppStyle.edgeInsetsH4,
+                    margin: AppStyle.edgeInsetsL8,
+                    child: Text(
+                      controller.playUrls[i].contains(".flv") ? "FLV" : "HLS",
+                      style: const TextStyle(fontSize: 12),
                     ),
                   ),
-                  padding: AppStyle.edgeInsetsH4,
-                  margin: AppStyle.edgeInsetsL8,
-                  child: Text(
-                    controller.playUrls[i].contains(".flv") ? "FLV" : "HLS",
-                    style: const TextStyle(
-                      fontSize: 12,
-                    ),
-                  ),
-                )),
+                ),
               ],
             ),
             style: const TextStyle(fontSize: 14),
@@ -747,10 +738,7 @@ void showQualitesInfo(LiveRoomController controller) {
         var item = controller.qualites[i];
         return ListTile(
           selected: controller.currentQuality == i,
-          title: Text(
-            item.quality,
-            style: const TextStyle(fontSize: 14),
-          ),
+          title: Text(item.quality, style: const TextStyle(fontSize: 14)),
           minLeadingWidth: 16,
           onTap: () {
             Utils.hideRightDialog();
@@ -775,9 +763,7 @@ void showDanmakuSettings(LiveRoomController controller) {
     child: ListView(
       padding: AppStyle.edgeInsetsA12,
       children: [
-        DanmuSettingsView(
-          danmakuController: controller.danmakuController,
-        ),
+        DanmuSettingsView(danmakuController: controller.danmakuController),
       ],
     ),
   );
@@ -804,10 +790,7 @@ void showPlayerSettings(LiveRoomController controller) {
           children: [
             Padding(
               padding: AppStyle.edgeInsetsH16,
-              child: Text(
-                "画面尺寸",
-                style: Get.textTheme.titleMedium,
-              ),
+              child: Text("画面尺寸", style: Get.textTheme.titleMedium),
             ),
             const RadioListTile(
               value: 0,
@@ -903,12 +886,12 @@ class PlayerSuperChatCard extends StatefulWidget {
   final LiveSuperChatMessage message;
   final VoidCallback onExpire;
   final int duration;
-  const PlayerSuperChatCard(
-      {required this.message,
-      required this.onExpire,
-      required this.duration,
-      Key? key})
-      : super(key: key);
+  const PlayerSuperChatCard({
+    required this.message,
+    required this.onExpire,
+    required this.duration,
+    Key? key,
+  }) : super(key: key);
   @override
   State<PlayerSuperChatCard> createState() => _PlayerSuperChatCardState();
 }
@@ -998,8 +981,9 @@ class _PlayerSuperChatOverlayState extends State<PlayerSuperChatOverlay> {
       }
     }
     // 监听SC列表变化
-    _worker =
-        ever<List<LiveSuperChatMessage>>(widget.controller.superChats, (list) {
+    _worker = ever<List<LiveSuperChatMessage>>(widget.controller.superChats, (
+      list,
+    ) {
       // 新增
       for (var sc in list) {
         if (!_displayed.any((e) => e.sc == sc)) {
@@ -1044,3 +1028,18 @@ class _PlayerSuperChatOverlayState extends State<PlayerSuperChatOverlay> {
     );
   }
 }
+
+Widget buildVolumeButton(LiveRoomController controller) => DesktopVolumeButton(
+      volume: controller.playbackVolume,
+      onChanged: (value) =>
+          controller.setRoomVolume(value, persistDefault: false),
+      onChangeEnd: controller.setRoomVolume,
+      onMute: controller.toggleMute,
+      onOpened: () {
+        controller.hideControlsTimer?.cancel();
+        controller.showControlsState.value = true;
+      },
+      onClosed: () {
+        if (!controller.isClosed) controller.resetHideControlsTimer();
+      },
+    );

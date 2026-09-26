@@ -1,15 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:simple_live_app/app/controller/app_settings_controller.dart';
 import 'package:simple_live_app/app/controller/base_controller.dart';
 import 'package:simple_live_app/app/log.dart';
-import 'package:path/path.dart' as p;
+import 'package:simple_live_app/app/diagnostics/diagnostic_writer.dart';
 import 'package:simple_live_app/app/utils.dart';
 import 'package:simple_live_app/services/local_storage_service.dart';
 
@@ -50,7 +50,7 @@ class OtherSettingsController extends BaseController {
     "sdl": "sdl (Cross-platform, via SDL library)",
     "openal": "openal (Cross-platform, OpenAL backend)",
     "libao": "libao (Cross-platform, uses libao library)",
-    "auto": "auto (Not available)"
+    "auto": "auto (Not available)",
   };
 
   var hardwareDecoder = {
@@ -80,7 +80,7 @@ class OtherSettingsController extends BaseController {
     "cuda": "cuda",
     "cuda-copy": "cuda-copy",
     "crystalhd": "crystalhd",
-    "rkmpp": "rkmpp"
+    "rkmpp": "rkmpp",
   };
 
   @override
@@ -89,67 +89,131 @@ class OtherSettingsController extends BaseController {
     super.onInit();
   }
 
-  void setLogEnable(e) {
-    AppSettingsController.instance.setLogEnable(e);
-    if (e) {
-      Log.initWriter();
-      Future.delayed(const Duration(milliseconds: 100), () {
-        loadLogFiles();
-      });
-    } else {
-      Log.disposeWriter();
-    }
-  }
-
-  void loadLogFiles() async {
-    var supportDir = await getApplicationSupportDirectory();
-    var logDir = Directory("${supportDir.path}/log");
-    if (!await logDir.exists()) {
-      await logDir.create();
-    }
-    logFiles.clear();
-    await logDir.list().forEach((element) {
-      var file = element as File;
-      var name = p.basename(file.path);
-      var time = file.lastModifiedSync();
-      var size = file.lengthSync();
-      logFiles.add(LogFileModel(name, file.path, time, size));
-    });
-    //logFiles 名称倒序
-    logFiles.sort((a, b) => b.time.compareTo(a.time));
-  }
-
-  void cleanLog() async {
-    if (AppSettingsController.instance.logEnable.value) {
-      SmartDialog.showToast("请先关闭日志记录");
-      return;
-    }
-
-    var supportDir = await getApplicationSupportDirectory();
-    var logDir = Directory("${supportDir.path}/log");
-    if (await logDir.exists()) {
-      await logDir.delete(recursive: true);
-    }
+  void setLogEnable(bool enabled) {
+    AppSettingsController.instance.setLogEnable(enabled);
+    Log.setDetailed(enabled);
     loadLogFiles();
   }
 
-  void shareLogFile(LogFileModel item) {
-    SharePlus.instance.share(ShareParams(
-      files: [XFile(item.path)],
-    ));
+  Future<void> loadLogFiles() async {
+    try {
+      final result = <LogFileModel>[];
+      for (final file in await Log.logFiles()) {
+        try {
+          final stat = await file.stat();
+          result.add(
+            LogFileModel(
+              file.uri.pathSegments.last,
+              file.path,
+              stat.modified,
+              stat.size,
+            ),
+          );
+        } on FileSystemException {
+          /* Concurrent rotation. */
+        }
+      }
+      result.sort((a, b) => b.time.compareTo(a.time));
+      logFiles.assignAll(result);
+    } catch (error, stack) {
+      Log.e('Unable to list logs: $error', stack);
+      SmartDialog.showToast("读取日志失败");
+    }
   }
 
-  void saveLogFile(LogFileModel item) async {
-    var filePath = await FilePicker.platform.saveFile(
-      allowedExtensions: ['log'],
-      type: FileType.custom,
-      fileName: item.name,
-      bytes: Uint8List(0),
-    );
-    if (filePath != null) {
-      var file = File(item.path);
-      await file.copy(filePath);
-      SmartDialog.showToast("保存成功");
+  Future<void> cleanLog() async {
+    try {
+      final count = await Log.cleanLogs();
+      await loadLogFiles();
+      SmartDialog.showToast("已清理 $count 个历史日志，正在使用的日志已保留");
+    } catch (error, stack) {
+      Log.e('Unable to clean logs: $error', stack);
+      SmartDialog.showToast("清理日志失败");
+    }
+  }
+
+  Future<void> exportDiagnostics() async {
+    try {
+      final file = await Log.exportDiagnostics();
+      final bytes = await file.readAsBytes();
+      final inlineSave = Platform.isAndroid || Platform.isIOS;
+      final target = await FilePicker.platform.saveFile(
+        allowedExtensions: ['zip'],
+        type: FileType.custom,
+        fileName: file.uri.pathSegments.last,
+        bytes: inlineSave ? bytes : null,
+      );
+      if (target != null) {
+        if (!inlineSave) await File(target).writeAsBytes(bytes, flush: true);
+        SmartDialog.showToast("诊断包已保存");
+      }
+    } catch (error, stack) {
+      Log.e('Unable to export diagnostics: $error', stack);
+      SmartDialog.showToast("导出诊断包失败");
+    }
+  }
+
+  Future<void> openLogDirectory() async {
+    try {
+      final directory = await Log.logDirectory();
+      await directory.create(recursive: true);
+      if (Platform.isWindows) {
+        await Process.start('explorer.exe', [directory.path]);
+      } else if (Platform.isMacOS) {
+        await Process.start('open', [directory.path]);
+      } else if (Platform.isLinux) {
+        await Process.start('xdg-open', [directory.path]);
+      }
+    } catch (error, stack) {
+      Log.e('Unable to open log directory: $error', stack);
+      SmartDialog.showToast("打开日志目录失败");
+    }
+  }
+
+  Future<void> shareLogFile(LogFileModel item) async {
+    try {
+      // Export historical logs through redaction too.
+      final bytes = utf8.encode(
+        redactDiagnostic(await File(item.path).readAsString()),
+      );
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              Uint8List.fromList(bytes),
+              mimeType: 'text/plain',
+              name: item.name,
+            ),
+          ],
+          fileNameOverrides: [item.name],
+        ),
+      );
+    } catch (error, stack) {
+      Log.e('Unable to share log: $error', stack);
+      SmartDialog.showToast("分享日志失败");
+    }
+  }
+
+  Future<void> saveLogFile(LogFileModel item) async {
+    try {
+      await Log.flush();
+      final bytes = Uint8List.fromList(
+        utf8.encode(redactDiagnostic(await File(item.path).readAsString())),
+      );
+      final inlineSave = Platform.isAndroid || Platform.isIOS;
+      final filePath = await FilePicker.platform.saveFile(
+        allowedExtensions: ['log'],
+        type: FileType.custom,
+        fileName: item.name,
+        bytes: inlineSave ? bytes : null,
+      );
+      if (filePath != null) {
+        if (!inlineSave) await File(filePath).writeAsBytes(bytes, flush: true);
+        SmartDialog.showToast("保存成功");
+      }
+    } catch (error, stack) {
+      Log.e('Unable to save log: $error', stack);
+      SmartDialog.showToast("保存日志失败");
     }
   }
 
@@ -214,11 +278,11 @@ class OtherSettingsController extends BaseController {
           !await Utils.showAlertDialog("导入配置文件平台不匹配,是否继续导入?", title: "平台不匹配")) {
         return;
       }
-      LocalStorageService.instance.settingsBox.clear();
-      LocalStorageService.instance.shieldBox.clear();
-      LocalStorageService.instance.settingsBox.putAll(data["config"]);
-      LocalStorageService.instance.shieldBox
-          .putAll(data["shield"].cast<String, String>());
+      // Validate both sections before changing either persistent box.
+      final config = Map<String, dynamic>.from(data["config"]);
+      final shield = Map<String, String>.from(data["shield"]);
+      await LocalStorageService.instance.settingsBox.replaceAll(config);
+      await LocalStorageService.instance.shieldBox.replaceAll(shield);
       SmartDialog.showToast("导入成功,重启生效");
     } catch (e) {
       Log.logPrint(e);
@@ -227,10 +291,10 @@ class OtherSettingsController extends BaseController {
   }
 
   void resetDefaultConfig() {
-    Utils.showAlertDialog("是否重置所有配置为默认值?").then((value) {
+    Utils.showAlertDialog("是否重置所有配置为默认值?").then((value) async {
       if (value) {
-        LocalStorageService.instance.settingsBox.clear();
-        LocalStorageService.instance.shieldBox.clear();
+        await LocalStorageService.instance.settingsBox.clear();
+        await LocalStorageService.instance.shieldBox.clear();
         SmartDialog.showToast("重置成功,重启生效");
       }
     });
