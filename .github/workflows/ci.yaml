@@ -1,11 +1,11 @@
-name: Fork Build
-run-name: Fork Build · ${{ github.ref_type }} ${{ github.ref_name }} · ${{ github.sha }}
+name: Development Build
+run-name: Development Build · ${{ github.ref_type }} ${{ github.ref_name }} · ${{ github.sha }}
 
 on:
   push:
-    branches: [dev, master]
+    branches: [develop]
   pull_request:
-    branches: [dev, master]
+    branches: [develop]
   workflow_dispatch:
   workflow_call:
 

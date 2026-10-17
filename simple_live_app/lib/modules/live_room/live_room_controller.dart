@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'player/recovery_budget.dart';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -532,7 +534,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     currentQualityInfo.value = quality.quality;
     currentLineInfo.value = "";
     currentLineIndex = -1;
-    playUrlResolveCount = 0;
+    _playUrlRecovery.reset();
     try {
       final result = await requestSite.liveSite.getPlayUrls(
         detail: requestDetail,
@@ -615,9 +617,9 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
   int mediaErrorRetryCount = 0;
 
-  /// 断流后重新取流(重新签名)的次数上限，防止无限重试
-  int playUrlResolveCount = 0;
-  static const int _maxPlayUrlResolveCount = 3;
+  // 每分钟最多重取三次；长时间观看不会耗尽整个会话的恢复机会。
+  final _playUrlRecovery = RecoveryBudget();
+  final _recoveryClock = Stopwatch()..start();
 
   /// 所有线路均失败后，重新调用取流接口获取新签名地址。
   /// 斗鱼 H5 流带 5 分钟 wsAuth 短签名，断线后旧 URL 重试/换线都是无效的，
@@ -629,13 +631,12 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     if (!_playback.owns(request) ||
         requestDetail == null ||
         currentQuality < 0 ||
-        currentQuality >= qualites.length ||
-        playUrlResolveCount >= _maxPlayUrlResolveCount) {
+        currentQuality >= qualites.length) {
       return false;
     }
     final quality = qualites[currentQuality];
-    playUrlResolveCount += 1;
-    Log.d("所有线路失败，重新获取播放地址(第$playUrlResolveCount次)");
+    if (!_playUrlRecovery.tryAcquire(_recoveryClock.elapsed)) return false;
+    Log.d("所有线路失败，重新获取播放地址(本分钟第${_playUrlRecovery.count}次)");
     try {
       final result = await requestSite.liveSite.getPlayUrls(
         detail: requestDetail,

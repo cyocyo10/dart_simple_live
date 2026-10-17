@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'douyu_stream_url.dart';
+
 import 'package:simple_live_core/src/common/http_client.dart';
 import 'package:simple_live_core/src/danmaku/douyu_danmaku.dart';
 import 'package:simple_live_core/src/douyu_utils.dart';
@@ -155,7 +157,7 @@ class DouyuSite implements LiveSite {
   ) async {
     try {
       var playData = await _requestPlayData(roomId, rate: rate, cdn: cdn);
-      return _parsePlayUrl(playData);
+      return normalizeDouyuStreamUrl(_parsePlayUrl(playData));
     } catch (_) {
       return "";
     }

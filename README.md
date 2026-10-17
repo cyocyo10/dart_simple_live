@@ -1,3 +1,5 @@
+> 当前测试：`develop` 已集成斗鱼取流恢复和消息缓存修复，查看 [Development Build](https://github.com/cyocyo10/dart_simple_live/actions/workflows/ci.yaml?query=branch%3Adevelop) 下载测试 APK。生产分支和公开发布暂不变更。
+
 <p align="center"><img width="128" src="assets/logo.png" alt="Simple Live logo"></p>
 <h2 align="center">Simple Live · cyocyo10 维护版</h2>
 
