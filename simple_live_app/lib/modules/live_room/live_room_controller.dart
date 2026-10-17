@@ -68,6 +68,13 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
   /// 聊天信息
   RxList<LiveMessage> messages = RxList<LiveMessage>();
+  static const int maxChatMessages = 200;
+  // Freeze the visible history while reading; retain only the newest arrivals.
+  final List<LiveMessage> _pendingChatMessages = [];
+  bool _chatScrollScheduled = false;
+
+  @visibleForTesting
+  int get pendingChatMessageCount => _pendingChatMessages.length;
 
   /// 清晰度数据
   RxList<LivePlayQuality> qualites = RxList<LivePlayQuality>();
@@ -244,6 +251,45 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     }
   }
 
+  void _appendChatMessage(LiveMessage message) {
+    if (_roomClosing) return;
+    final target = disableAutoScroll.value ? _pendingChatMessages : messages;
+    if (target.length >= maxChatMessages) {
+      target.removeRange(0, target.length - maxChatMessages + 1);
+    }
+    target.add(message);
+    _scheduleChatScroll();
+  }
+
+  void _scheduleChatScroll() {
+    // A background app may not produce frames. Keep at most one callback,
+    // rather than retaining one closure for every incoming message.
+    if (_roomClosing ||
+        isBackground ||
+        disableAutoScroll.value ||
+        _chatScrollScheduled) {
+      return;
+    }
+    _chatScrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chatScrollScheduled = false;
+      if (!_roomClosing && !isBackground) chatScrollToBottom();
+    });
+  }
+
+  /// Resume with the newest bounded history without moving the paused snapshot.
+  void resumeChatAutoScroll() {
+    final latest = [...messages, ..._pendingChatMessages];
+    messages.assignAll(
+      latest.skip(
+        latest.length > maxChatMessages ? latest.length - maxChatMessages : 0,
+      ),
+    );
+    _pendingChatMessages.clear();
+    disableAutoScroll.value = false;
+    _scheduleChatScroll();
+  }
+
   /// 初始化弹幕接收事件
   void initDanmau() {
     liveDanmaku.onMessage = onWSMessage;
@@ -254,10 +300,6 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
   /// 接收到WebSocket信息
   void onWSMessage(LiveMessage msg) {
     if (msg.type == LiveMessageType.chat) {
-      if (messages.length > 200 && !disableAutoScroll.value) {
-        messages.removeAt(0);
-      }
-
       // 关键词屏蔽检查
       for (var keyword in AppSettingsController.instance.shieldList) {
         Pattern? pattern;
@@ -278,9 +320,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
         }
       }
 
-      messages.add(msg);
-
-      WidgetsBinding.instance.addPostFrameCallback((_) => chatScrollToBottom());
+      _appendChatMessage(msg);
       if (!liveStatus.value || isBackground) {
         return;
       }
@@ -300,7 +340,7 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
 
   /// 添加一条系统消息
   void addSysMsg(String msg) {
-    messages.add(
+    _appendChatMessage(
       LiveMessage(
         type: LiveMessageType.chat,
         userName: "LiveSysMessage",
@@ -1168,6 +1208,8 @@ class LiveRoomController extends PlayerController with WidgetsBindingObserver {
     _liveDurationTimer?.cancel();
     liveDuration.value = "00:00:00";
     messages.clear();
+    _pendingChatMessages.clear();
+    disableAutoScroll.value = false;
     superChats.clear();
     danmakuController?.clear();
     _playerHasCurrentPlaylist = false;
@@ -1214,6 +1256,7 @@ ${error?.stackTrace}''');
     if (state == AppLifecycleState.resumed) {
       Log.d("返回前台");
       isBackground = false;
+      _scheduleChatScroll();
     }
   }
 
@@ -1280,6 +1323,8 @@ ${error?.stackTrace}''');
   void preparePlayerClose() {
     if (_roomClosing) return;
     _roomClosing = true;
+    _pendingChatMessages.clear();
+    messages.clear();
     _playback.close();
     ++_autoExitGeneration;
     _autoExitGraceTimer?.cancel();
